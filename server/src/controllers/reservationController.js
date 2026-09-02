@@ -1,6 +1,11 @@
 import Reservation from '../models/Reservation.js';
 import FoodListing from '../models/FoodListing.js';
 import User from '../models/User.js';
+import {
+    sendReservationNotificationToSupplier,
+    sendReservationConfirmationToReceiver,
+    sendArrivalAlertToSupplier
+} from '../utils/emailService.js';
 
 const generatePickupCode = () => {
     return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit code
@@ -44,7 +49,7 @@ export const createReservation = async (req, res) => {
 
         const { listingId, quantity } = req.body;
 
-        const listing = await FoodListing.findById(listingId);
+        const listing = await FoodListing.findById(listingId).populate('supplier');
         if (!listing) return res.status(404).json({ message: 'Listing not found' });
         if (new Date(listing.expiryTime) < new Date()) {
             listing.status = 'EXPIRED';
@@ -65,14 +70,47 @@ export const createReservation = async (req, res) => {
         }
         await listing.save();
 
+        const pickupCode = generatePickupCode();
         const reservation = new Reservation({
             foodListing: listingId,
             receiver: req.user.id,
             quantity,
-            pickupCode: generatePickupCode()
+            pickupCode
         });
 
         await reservation.save();
+
+        // Asynchronously dispatch Gmail / email notifications
+        const receiver = await User.findById(req.user.id);
+        if (listing.supplier && receiver) {
+            sendReservationNotificationToSupplier({
+                supplierEmail: listing.supplier.email,
+                supplierName: listing.supplier.name || 'Food Donor',
+                receiverName: receiver.name || 'Community Member',
+                receiverEmail: receiver.email,
+                foodName: listing.foodName,
+                quantity,
+                unit: listing.unit,
+                pickupCode,
+                pickupLocation: listing.location,
+                pickupStart: listing.pickupStart,
+                pickupEnd: listing.pickupEnd
+            }).catch(e => console.error('Supplier email dispatch error:', e));
+
+            sendReservationConfirmationToReceiver({
+                receiverEmail: receiver.email,
+                receiverName: receiver.name || 'Community Member',
+                supplierName: listing.supplier.name || 'Food Donor',
+                foodName: listing.foodName,
+                quantity,
+                unit: listing.unit,
+                pickupCode,
+                pickupLocation: listing.location,
+                pickupStart: listing.pickupStart,
+                pickupEnd: listing.pickupEnd
+            }).catch(e => console.error('Receiver email dispatch error:', e));
+        }
+
         res.status(201).json(reservation);
     } catch (err) {
         res.status(400).json({ message: 'Error creating reservation', error: err.message });
@@ -122,7 +160,12 @@ export const notifyArrival = async (req, res) => {
         const { pickupCode, reservationId } = req.body;
 
         const query = pickupCode ? { pickupCode } : { _id: reservationId };
-        const reservation = await Reservation.findOne(query).populate('foodListing');
+        const reservation = await Reservation.findOne(query)
+            .populate({
+                path: 'foodListing',
+                populate: { path: 'supplier', select: 'name email' }
+            })
+            .populate('receiver', 'name email');
 
         if (!reservation) {
             return res.status(404).json({ message: 'Reservation not found' });
@@ -131,6 +174,16 @@ export const notifyArrival = async (req, res) => {
         reservation.pickerArrived = true;
         reservation.arrivedAt = new Date();
         await reservation.save();
+
+        if (reservation.foodListing?.supplier?.email) {
+            sendArrivalAlertToSupplier({
+                supplierEmail: reservation.foodListing.supplier.email,
+                supplierName: reservation.foodListing.supplier.name || 'Food Donor',
+                receiverName: reservation.receiver?.name || 'Receiver',
+                foodName: reservation.foodListing.foodName,
+                pickupCode: reservation.pickupCode
+            }).catch(e => console.error('Arrival email error:', e));
+        }
 
         res.json({
             success: true,
