@@ -70,3 +70,34 @@ export const getMe = async (req, res) => {
         res.status(401).json({ message: 'Invalid token' });
     }
 };
+
+export const updateProfile = async (req, res) => {
+    try {
+        const { name, profileImage, dietaryPreferences, location, role } = req.body;
+        const allowedUpdates = {};
+        if (name !== undefined) allowedUpdates.name = name;
+        if (profileImage !== undefined) allowedUpdates.profileImage = profileImage;
+        if (dietaryPreferences !== undefined) allowedUpdates.dietaryPreferences = dietaryPreferences;
+        if (location !== undefined) allowedUpdates.location = location;
+        if (role !== undefined && ['supplier', 'receiver'].includes(role)) allowedUpdates.role = role;
+
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user.id,
+            { $set: allowedUpdates },
+            { returnDocument: 'after' }
+        ).select('-password');
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.json({
+            success: true,
+            message: 'Profile updated successfully',
+            user: updatedUser
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Error updating profile', error: error.message });
+    }
+};
+

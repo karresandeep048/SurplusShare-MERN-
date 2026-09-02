@@ -50,12 +50,24 @@ export const updateListing = async (req, res) => {
     try {
         await autoExpireItems();
 
+        const current = await FoodListing.findOne({ _id: req.params.id, supplier: req.user.id });
+        if (!current) return res.status(404).json({ message: 'Listing not found or unauthorized' });
+
+        const updates = { ...req.body };
+        // If quantity is updated, adjust availableQuantity proportionally
+        if (updates.quantity !== undefined && updates.availableQuantity === undefined) {
+            const reservedDiff = current.quantity - current.availableQuantity;
+            updates.availableQuantity = Math.max(0, updates.quantity - reservedDiff);
+            if (updates.availableQuantity > 0 && current.status === 'RESERVED') {
+                updates.status = 'PARTIALLY_RESERVED';
+            }
+        }
+
         const listing = await FoodListing.findOneAndUpdate(
             { _id: req.params.id, supplier: req.user.id },
-            req.body,
-            { new: true }
+            { $set: updates },
+            { returnDocument: 'after' }
         );
-        if (!listing) return res.status(404).json({ message: 'Listing not found or unauthorized' });
         res.json(listing);
     } catch (err) {
         res.status(400).json({ message: 'Error updating listing', error: err.message });

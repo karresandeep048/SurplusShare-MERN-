@@ -8,6 +8,7 @@ router.get('/', getAllListings);
 router.get('/my', authenticate, requireSupplier, getMyListings);
 router.get('/:id', getListingById);
 router.post('/', authenticate, requireSupplier, createListing);
+router.put('/:id', authenticate, requireSupplier, updateListing);
 router.patch('/:id', authenticate, requireSupplier, updateListing);
 router.delete('/:id', authenticate, requireSupplier, deleteListing);
 

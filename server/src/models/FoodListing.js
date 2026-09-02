@@ -18,7 +18,7 @@ const foodListingSchema = new mongoose.Schema({
         lat: { type: Number },
         lng: { type: Number }
     },
-    status: { type: String, enum: ['AVAILABLE', 'RESERVED', 'COLLECTED', 'EXPIRED', 'CANCELLED'], default: 'AVAILABLE' }
+    status: { type: String, enum: ['AVAILABLE', 'PARTIALLY_RESERVED', 'RESERVED', 'COLLECTED', 'EXPIRED', 'CANCELLED'], default: 'AVAILABLE' }
 }, { timestamps: true });
 
 export default mongoose.model('FoodListing', foodListingSchema);

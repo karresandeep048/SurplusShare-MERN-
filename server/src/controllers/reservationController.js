@@ -242,3 +242,52 @@ export const markCollected = async (req, res) => {
         res.status(400).json({ message: 'Error verifying collection', error: err.message });
     }
 };
+
+// Receiver cancels an active reservation, restoring available quantity
+export const cancelReservation = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const reservation = await Reservation.findById(id).populate('foodListing');
+        if (!reservation) {
+            return res.status(404).json({ message: 'Reservation not found' });
+        }
+
+        // Verify ownership (receiver or supplier of the food)
+        const isReceiver = String(reservation.receiver) === String(req.user.id);
+        const isSupplier = reservation.foodListing && String(reservation.foodListing.supplier) === String(req.user.id);
+        
+        if (!isReceiver && !isSupplier && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Unauthorized to cancel this reservation' });
+        }
+
+        if (reservation.status === 'COLLECTED') {
+            return res.status(400).json({ message: 'Cannot cancel an already collected reservation' });
+        }
+
+        if (reservation.status === 'CANCELLED') {
+            return res.status(400).json({ message: 'Reservation is already cancelled' });
+        }
+
+        reservation.status = 'CANCELLED';
+        await reservation.save();
+
+        // Restore quantity to listing if listing exists and is not expired
+        const listing = reservation.foodListing;
+        if (listing && listing.status !== 'EXPIRED') {
+            const restoredQty = Math.min(listing.quantity, (listing.availableQuantity || 0) + (reservation.quantity || 1));
+            listing.availableQuantity = restoredQty;
+            listing.status = restoredQty === listing.quantity ? 'AVAILABLE' : 'PARTIALLY_RESERVED';
+            await listing.save();
+        }
+
+        res.json({
+            success: true,
+            message: 'Reservation cancelled successfully and portions returned to community pool.',
+            reservation
+        });
+    } catch (err) {
+        res.status(400).json({ message: 'Error cancelling reservation', error: err.message });
+    }
+};
+

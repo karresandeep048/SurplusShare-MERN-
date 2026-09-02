@@ -5,8 +5,8 @@ import './index.css'
 import { AuthProvider } from './context/AuthContext.jsx'
 import axios from 'axios';
 
-// Ensure all API calls inherit the production backend URL if deployed
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || '';
+// Ensure seamless local development via Vite proxy, and production support
+axios.defaults.baseURL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

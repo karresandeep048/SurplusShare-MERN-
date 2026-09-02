@@ -1,89 +1,301 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { MapPin, Clock, Tag } from 'lucide-react';
+import React, { useState, useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
+import axios from 'axios';
+import { 
+    MapPin, 
+    Clock, 
+    Tag, 
+    Package, 
+    Sparkles, 
+    CheckCircle2, 
+    AlertCircle, 
+    Loader2, 
+    ArrowRight,
+    Heart
+} from 'lucide-react';
 
-export const FoodCard = ({ food, compact = false }) => {
+const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=600&auto=format&fit=crop&q=80";
+
+export const FoodCard = ({ food, compact = false, onReserved }) => {
+    const { user } = useContext(AuthContext);
+    const navigate = useNavigate();
+    const [quickReserving, setQuickReserving] = useState(false);
+    const [showQuickModal, setShowQuickModal] = useState(false);
+    const [reserveQty, setReserveQty] = useState(1);
+    const [errorMsg, setErrorMsg] = useState(null);
+
     const now = new Date();
     const expiry = new Date(food.expiryTime);
     const diffHrs = Math.max(0, (expiry - now) / 3600000);
+    const isExpired = food.status === 'EXPIRED' || diffHrs <= 0;
 
-    let expiryColor = "bg-green-100 text-green-800";
-    let expiryText = `Expires in ${Math.round(diffHrs)} hours`;
+    let urgencyBadge = {
+        bg: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        label: `Expires in ${Math.round(diffHrs)}h`
+    };
 
-    if (diffHrs < 1) {
-        expiryColor = "bg-red-100 text-red-800";
-        expiryText = "Expiring soon!";
+    if (isExpired) {
+        urgencyBadge = {
+            bg: "bg-red-50 text-red-700 border-red-200",
+            label: "Expired"
+        };
+    } else if (diffHrs < 1) {
+        const mins = Math.max(1, Math.round(diffHrs * 60));
+        urgencyBadge = {
+            bg: "bg-rose-50 text-rose-700 border-rose-200 animate-pulse",
+            label: `⚡ Only ${mins}m left!`
+        };
     } else if (diffHrs < 3) {
-        expiryColor = "bg-orange-100 text-orange-800";
-        expiryText = `Expires in ${Math.round(diffHrs)} hours`;
+        urgencyBadge = {
+            bg: "bg-amber-50 text-amber-700 border-amber-200",
+            label: `⏳ ${Math.round(diffHrs)}h left`
+        };
     }
 
-    return (
-        <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow flex ${compact ? 'flex-col' : 'flex-col sm:flex-row'}`}>
-            <div className={`${compact ? 'h-48' : 'h-48 sm:h-auto sm:w-48'} shrink-0 relative bg-gray-100`}>
-                <img
-                    src={food.image || "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=400&q=80"}
-                    onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=400&q=80"; }}
-                    alt={food.foodName}
-                    className="w-full h-full object-cover"
-                />
-                <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-bold text-gray-800 shadow-sm">
-                    {food.availableQuantity} {food.unit}
-                </div>
-            </div>
+    const handleQuickReserve = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
 
-            <div className="p-4 sm:p-5 flex flex-col flex-1 justify-between min-w-0">
-                <div>
-                    <div className="flex justify-between items-start mb-1">
-                        <h3 className="text-lg font-bold text-gray-900 truncate pr-2" title={food.foodName}>{food.foodName}</h3>
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium shrink-0 ${food.status === 'AVAILABLE' ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600'}`}>
-                            {food.status}
+        if (!user) {
+            navigate('/login');
+            return;
+        }
+
+        if (user.role === 'supplier') {
+            alert('Suppliers cannot reserve food. Please log in with a receiver account.');
+            return;
+        }
+
+        setQuickReserving(true);
+        setErrorMsg(null);
+        try {
+            const { data } = await axios.post('/api/reservations', {
+                listingId: food._id,
+                quantity: reserveQty
+            });
+
+            if (onReserved) onReserved(data);
+            navigate(`/track-order/${data.pickupCode}`);
+        } catch (err) {
+            setErrorMsg(err.response?.data?.message || 'Failed to complete reservation.');
+            setQuickReserving(false);
+        }
+    };
+
+    return (
+        <>
+            <div className={`group bg-white rounded-3xl border border-slate-100 hover:border-brand-200 shadow-sm hover:shadow-xl hover:shadow-brand-500/5 transition-all duration-300 overflow-hidden flex flex-col justify-between ${
+                compact ? '' : 'sm:flex-row'
+            }`}>
+                
+                {/* Image Section */}
+                <div className={`relative bg-slate-100 overflow-hidden shrink-0 ${
+                    compact ? 'h-52 w-full' : 'h-52 sm:h-auto sm:w-56'
+                }`}>
+                    <img
+                        src={food.image || DEFAULT_IMAGE}
+                        onError={(e) => { e.currentTarget.src = DEFAULT_IMAGE; }}
+                        alt={food.foodName}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    
+                    {/* Portion Pill */}
+                    <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-black text-slate-800 shadow-md border border-white/50 flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5 text-brand-600" />
+                        <span>{food.availableQuantity} {food.unit}</span>
+                    </div>
+
+                    {/* Expiry Urgency Badge */}
+                    <div className="absolute top-3 right-3">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-black border shadow-sm backdrop-blur-md ${urgencyBadge.bg}`}>
+                            {urgencyBadge.label}
                         </span>
                     </div>
-                    <div className="text-sm text-gray-500 mb-3 truncate font-medium">
-                        {food.supplier?.name || "Local Supplier"}
-                    </div>
 
-                    <div className="flex flex-wrap gap-1.5 mb-4">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700">
+                    {/* Food Type Pill */}
+                    <div className="absolute bottom-3 left-3">
+                        <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black shadow-sm ${
+                            food.foodType === 'Vegan' ? 'bg-emerald-600 text-white' :
+                            food.foodType === 'Vegetarian' ? 'bg-green-600 text-white' :
+                            food.foodType === 'Non-Vegetarian' ? 'bg-amber-600 text-white' :
+                            'bg-slate-700 text-white'
+                        }`}>
                             {food.foodType}
                         </span>
-                        {food.dietaryInformation?.slice(0, 2).map((diet, i) => (
-                            <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                <Tag className="w-3 h-3 mr-1" /> {diet}
+                    </div>
+                </div>
+
+                {/* Content Section */}
+                <div className="p-5 sm:p-6 flex flex-col flex-1 justify-between min-w-0">
+                    <div>
+                        {/* Title & Status */}
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <h3 className="text-lg font-bold text-slate-900 group-hover:text-brand-700 transition-colors truncate" title={food.foodName}>
+                                {food.foodName}
+                            </h3>
+                            <span className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black shrink-0 ${
+                                isExpired ? 'bg-red-100 text-red-700' :
+                                food.status === 'AVAILABLE' ? 'bg-brand-50 text-brand-700 border border-brand-200' :
+                                'bg-slate-100 text-slate-600'
+                            }`}>
+                                {isExpired ? 'EXPIRED' : food.status}
                             </span>
-                        ))}
-                        {food.dietaryInformation?.length > 2 && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-500">
-                                +{food.dietaryInformation.length - 2}
-                            </span>
+                        </div>
+
+                        {/* Donor info */}
+                        <p className="text-xs font-semibold text-slate-500 mb-3 flex items-center gap-1">
+                            <span>Donor:</span>
+                            <span className="font-bold text-slate-800">{food.supplier?.name || "Local Verified Supplier"}</span>
+                        </p>
+
+                        {/* Description */}
+                        {food.description && (
+                            <p className="text-xs text-slate-600 line-clamp-2 font-normal mb-4 leading-relaxed">
+                                {food.description}
+                            </p>
+                        )}
+
+                        {/* Dietary Tags */}
+                        {food.dietaryInformation?.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-4">
+                                {food.dietaryInformation.slice(0, 3).map((diet, i) => (
+                                    <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200/60">
+                                        <Tag className="w-2.5 h-2.5 mr-1 text-slate-400" />
+                                        {diet}
+                                    </span>
+                                ))}
+                                {food.dietaryInformation.length > 3 && (
+                                    <span className="text-[11px] font-bold text-slate-400 self-center">
+                                        +{food.dietaryInformation.length - 3} more
+                                    </span>
+                                )}
+                            </div>
                         )}
                     </div>
-                </div>
 
-                <div className="space-y-2 mt-auto">
-                    <div className="flex items-center text-xs text-gray-500 font-medium whitespace-nowrap">
-                        <Clock className="w-4 h-4 mr-1.5 text-gray-400 shrink-0" />
-                        <span className={`px-2 py-0.5 rounded ${expiryColor} font-bold mr-2 tracking-wide`}>{expiryText}</span>
-                        {new Date(food.pickupStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(food.pickupEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                    <div className="flex items-center text-xs text-gray-500 font-medium truncate">
-                        <MapPin className="w-4 h-4 mr-1.5 text-gray-400 shrink-0" />
-                        <span className="truncate">{food.location}</span>
-                        {food.coordinates && <span className="ml-1 text-gray-400 shrink-0">(1.2 km)</span>}
-                    </div>
-                </div>
+                    {/* Footer / Meta & Action */}
+                    <div className="pt-4 border-t border-slate-100 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-500">
+                            <div className="flex items-center truncate" title={food.location}>
+                                <MapPin className="w-3.5 h-3.5 mr-1 text-brand-500 shrink-0" />
+                                <span className="truncate max-w-[180px]">{food.location}</span>
+                            </div>
+                            <div className="flex items-center text-slate-600">
+                                <Clock className="w-3.5 h-3.5 mr-1 text-amber-500 shrink-0" />
+                                <span>{new Date(food.pickupStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(food.pickupEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                        </div>
 
-                {food.status === 'AVAILABLE' && (
-                    <div className="mt-4 flex justify-end">
-                        <Link to={`/listing/${food._id}`} className="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm focus:ring-2 focus:ring-brand-500 focus:outline-none focus:ring-offset-2">
-                            View & Reserve
-                        </Link>
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                            <Link 
+                                to={`/listing/${food._id}`} 
+                                className="text-xs font-bold text-slate-600 hover:text-brand-700 flex items-center gap-1 transition-colors py-2"
+                            >
+                                <span>View Full Info</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                            </Link>
+
+                            {food.status === 'AVAILABLE' && !isExpired && user?.role !== 'supplier' && (
+                                <button
+                                    onClick={() => setShowQuickModal(true)}
+                                    className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-brand-500/20 hover:shadow-lg flex items-center gap-1.5"
+                                >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <span>Quick Reserve</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
-                )}
+
+                </div>
             </div>
-        </div>
+
+            {/* Quick 1-Click Reservation Modal */}
+            {showQuickModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 animate-scale-up">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <span className="text-xs font-bold text-brand-600 uppercase tracking-wider">Fast Food Rescue</span>
+                                <h3 className="text-xl font-black text-slate-900">{food.foodName}</h3>
+                                <p className="text-xs text-slate-500 font-medium">Pickup at {food.location}</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowQuickModal(false)}
+                                className="p-2 text-slate-400 hover:text-slate-600 rounded-full bg-slate-100"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {errorMsg && (
+                            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-xs font-medium flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                <span>{errorMsg}</span>
+                            </div>
+                        )}
+
+                        <div className="bg-brand-50/50 p-4 rounded-2xl border border-brand-100 mb-6">
+                            <label className="block text-xs font-bold text-brand-900 mb-2">Select Portions to Reserve:</label>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center bg-white rounded-xl border border-brand-200 p-1">
+                                    <button 
+                                        type="button"
+                                        onClick={() => setReserveQty(Math.max(1, reserveQty - 1))}
+                                        className="w-8 h-8 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-100 rounded-lg"
+                                        disabled={reserveQty <= 1}
+                                    >-</button>
+                                    <span className="w-12 text-center font-black text-slate-900">{reserveQty}</span>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setReserveQty(Math.min(food.availableQuantity, reserveQty + 1))}
+                                        className="w-8 h-8 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-100 rounded-lg"
+                                        disabled={reserveQty >= food.availableQuantity}
+                                    >+</button>
+                                </div>
+                                <span className="text-xs font-bold text-brand-700">
+                                    {food.availableQuantity} {food.unit} available
+                                </span>
+                            </div>
+                            <p className="text-[11px] text-brand-600 font-semibold mt-2.5 flex items-center gap-1">
+                                <Heart className="w-3.5 h-3.5 fill-current text-brand-500" />
+                                <span>Rescuing this prevents ~{(reserveQty * 2.5).toFixed(1)} kg CO2 emissions!</span>
+                            </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowQuickModal(false)}
+                                className="flex-1 py-3 text-slate-600 hover:bg-slate-100 rounded-xl font-bold text-sm transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleQuickReserve}
+                                disabled={quickReserving}
+                                className="flex-1 py-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-xl font-bold text-sm shadow-md shadow-brand-500/20 transition-all flex items-center justify-center gap-2"
+                            >
+                                {quickReserving ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <span>Reserving...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        <span>Confirm Reservation</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
-}
+};
 
 export default FoodCard;

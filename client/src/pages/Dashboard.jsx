@@ -15,8 +15,11 @@ import {
     Loader2, 
     AlertCircle, 
     Clock, 
-    UserCheck,
-    Check
+    Check,
+    PlusSquare,
+    Search,
+    Sparkles,
+    ArrowRight
 } from 'lucide-react';
 
 const DEFAULT_FOOD_IMAGE = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=100&q=80';
@@ -38,7 +41,7 @@ const Dashboard = () => {
         total: 0
     });
 
-    // Verification code state
+    // Verification code terminal state
     const [verifyCodeInput, setVerifyCodeInput] = useState('');
     const [verifying, setVerifying] = useState(false);
     const [verifyMessage, setVerifyMessage] = useState(null);
@@ -48,7 +51,6 @@ const Dashboard = () => {
 
     const loadDashboardData = useCallback(() => {
         if (isSupplier) {
-            // 1. Fetch Supplier Listings
             axios.get('/api/listings/my')
                 .then(res => {
                     const data = res.data || [];
@@ -61,14 +63,12 @@ const Dashboard = () => {
                 })
                 .catch(err => console.error(err));
 
-            // 2. Fetch Supplier Incoming Reservations
             axios.get('/api/reservations/supplier')
                 .then(res => {
                     setIncomingReservations(res.data || []);
                 })
                 .catch(err => console.error(err));
         } else {
-            // Receiver reservations
             axios.get('/api/reservations/my')
                 .then(res => {
                     const data = res.data || [];
@@ -86,12 +86,10 @@ const Dashboard = () => {
 
     useEffect(() => {
         loadDashboardData();
-        // Periodically refresh every 15s to check for picker arrivals
-        const interval = setInterval(loadDashboardData, 15000);
+        const interval = setInterval(loadDashboardData, 12000);
         return () => clearInterval(interval);
     }, [loadDashboardData]);
 
-    // Handle Quick Code Verification by Donor
     const handleVerifyPickupCode = async (e) => {
         e.preventDefault();
         setVerifyError(null);
@@ -108,7 +106,7 @@ const Dashboard = () => {
                 pickupCode: verifyCodeInput.trim()
             });
 
-            setVerifyMessage(data.message || 'Pickup code matched! Food collection verified successfully.');
+            setVerifyMessage(data.message || 'Pickup verified successfully! Food handover complete.');
             setVerifyCodeInput('');
             loadDashboardData();
             setTimeout(() => setVerifyMessage(null), 6000);
@@ -119,44 +117,66 @@ const Dashboard = () => {
         }
     };
 
-    // Find all arrived pickers waiting for handover
     const arrivedPickers = incomingReservations.filter(r => r.pickerArrived && r.status === 'RESERVED');
     const activeReservedPickups = myReservations.filter(r => r.status === 'RESERVED');
 
     const supplierCards = [
-        { label: 'Active Listings', value: supplierStats.active, icon: ListIcon, color: 'text-indigo-600', bg: 'bg-indigo-100' },
-        { label: 'Reserved Food', value: supplierStats.reserved, icon: Package, color: 'text-amber-600', bg: 'bg-amber-100' },
-        { label: 'Food Collected', value: supplierStats.collected, icon: CheckCircle2, color: 'text-brand-600', bg: 'bg-brand-100' },
-        { label: 'Meals Rescued', value: supplierStats.rescued, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+        { label: 'Active Listings', value: supplierStats.active, icon: ListIcon, color: 'text-brand-600', bg: 'bg-brand-50' },
+        { label: 'In Reservation', value: supplierStats.reserved, icon: Package, color: 'text-amber-600', bg: 'bg-amber-50' },
+        { label: 'Handovers Done', value: supplierStats.collected, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        { label: 'Portions Rescued', value: supplierStats.rescued, icon: TrendingUp, color: 'text-teal-600', bg: 'bg-teal-50' },
     ];
 
     const receiverCards = [
-        { label: 'Meals Rescued', value: receiverStats.rescued, icon: Heart, color: 'text-brand-600', bg: 'bg-brand-100' },
-        { label: 'Successful Pickups', value: receiverStats.pickups, icon: CheckCircle2, color: 'text-blue-600', bg: 'bg-blue-100' },
-        { label: 'Rescue Actions', value: receiverStats.total, icon: Leaf, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+        { label: 'Meals Rescued', value: receiverStats.rescued, icon: Heart, color: 'text-rose-600', bg: 'bg-rose-50' },
+        { label: 'Completed Pickups', value: receiverStats.pickups, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        { label: 'Active Reservations', value: activeReservedPickups.length, icon: Package, color: 'text-brand-600', bg: 'bg-brand-50' },
+        { label: 'CO2 Avoided (kg)', value: (receiverStats.rescued * 2.5).toFixed(0), icon: Leaf, color: 'text-teal-600', bg: 'bg-teal-50' },
     ];
 
     const cards = isSupplier ? supplierCards : receiverCards;
 
     return (
-        <div className="max-w-6xl mx-auto pb-12">
+        <div className="max-w-6xl mx-auto pb-16">
             
-            {/* Header */}
+            {/* Header Banner */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-gray-900 mb-1">Welcome back, {user?.name?.split(' ')[0] || 'Guest'}! 👋</h1>
-                    <p className="text-gray-500 font-medium">Track surplus food rescue impact and active handovers.</p>
+                    <div className="flex items-center gap-2 mb-1">
+                        <h1 className="text-3xl font-black text-slate-900">
+                            Welcome back, {user?.name?.split(' ')[0] || 'Member'}! 👋
+                        </h1>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-brand-50 text-brand-700 border border-brand-200">
+                            {user?.role}
+                        </span>
+                    </div>
+                    <p className="text-slate-500 font-medium text-sm">
+                        Track surplus food rescue metrics, active handovers, and community impact.
+                    </p>
                 </div>
-                {isSupplier && (
-                    <Link to="/post-food" className="inline-flex items-center justify-center bg-brand-600 hover:bg-brand-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-md transition-all">
-                        + Share Surplus Food
+
+                {isSupplier ? (
+                    <Link 
+                        to="/post-food" 
+                        className="inline-flex items-center justify-center bg-brand-600 hover:bg-brand-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-md shadow-brand-500/20 transition-all text-sm gap-2"
+                    >
+                        <PlusSquare className="w-4 h-4" />
+                        <span>Share Surplus Food</span>
+                    </Link>
+                ) : (
+                    <Link 
+                        to="/find-food" 
+                        className="inline-flex items-center justify-center bg-brand-600 hover:bg-brand-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-md shadow-brand-500/20 transition-all text-sm gap-2"
+                    >
+                        <Search className="w-4 h-4" />
+                        <span>Find Food Nearby</span>
                     </Link>
                 )}
             </div>
 
-            {/* LIVE ARRIVAL NOTIFICATION ALERT FOR SUPPLIERS */}
+            {/* LIVE ARRIVAL ALERT BANNER FOR DONORS */}
             {isSupplier && arrivedPickers.length > 0 && (
-                <div className="mb-8 p-6 bg-gradient-to-r from-amber-500 to-emerald-600 text-white rounded-3xl shadow-lg animate-fade-in">
+                <div className="mb-8 p-6 bg-gradient-to-r from-amber-500 to-emerald-600 text-white rounded-3xl shadow-xl animate-fade-in">
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 animate-bounce">
@@ -164,84 +184,84 @@ const Dashboard = () => {
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <span className="bg-white text-amber-900 text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                                        Live Alert
+                                    <span className="bg-white text-amber-900 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                                        Live Handover Alert
                                     </span>
-                                    <h3 className="text-lg font-black">Picker Arrived at Location!</h3>
+                                    <h3 className="text-lg font-black">Receiver Arrived at Venue!</h3>
                                 </div>
-                                <p className="text-white/90 text-sm font-medium mt-0.5">
-                                    {arrivedPickers.map(p => `${p.receiver?.name || 'A receiver'} for "${p.foodListing?.foodName || 'Food'}"`).join(', ')} is at your pickup venue.
+                                <p className="text-white/90 text-xs font-medium mt-0.5">
+                                    {arrivedPickers.map(p => `${p.receiver?.name || 'A receiver'} for "${p.foodListing?.foodName || 'Food'}"`).join(', ')} is waiting at your location.
                                 </p>
                             </div>
                         </div>
                         <a 
                             href="#verify-section" 
-                            className="bg-white text-emerald-800 hover:bg-emerald-50 px-5 py-2.5 rounded-xl font-black text-sm shadow-md transition-all shrink-0"
+                            className="bg-white text-emerald-800 hover:bg-emerald-50 px-5 py-2.5 rounded-xl font-black text-xs shadow-md transition-all shrink-0"
                         >
-                            Verify Handover Code ↓
+                            Verify 6-Digit Code ↓
                         </a>
                     </div>
                 </div>
             )}
 
-            {/* Metrics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+            {/* Metrics Cards Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-10">
                 {cards.map((card, i) => (
-                    <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <div key={i} className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5 sm:p-6 flex flex-col justify-between hover:shadow-md transition-all">
                         <div className="flex justify-between items-start mb-4">
-                            <div className={`p-3 rounded-xl ${card.bg}`}>
-                                <card.icon className={`w-6 h-6 ${card.color}`} />
+                            <div className={`p-3 rounded-2xl ${card.bg}`}>
+                                <card.icon className={`w-5 h-5 ${card.color}`} />
                             </div>
                         </div>
                         <div>
-                            <h2 className="text-4xl font-black text-gray-900 mb-1 tracking-tight">{card.value}</h2>
-                            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{card.label}</p>
+                            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 mb-1 tracking-tight">{card.value}</h2>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{card.label}</p>
                         </div>
                     </div>
                 ))}
             </div>
 
-            {/* SUPPLIER: Pickup Code Verification & Active Handovers */}
+            {/* SUPPLIER: Quick Code Verification & Live Incoming Bookings */}
             {isSupplier && (
                 <div id="verify-section" className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-10">
                     
-                    {/* Left: Quick Code Verification Form */}
-                    <div className="lg:col-span-5 bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                    {/* Left: Code Terminal */}
+                    <div className="lg:col-span-5 bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-between">
                         <div>
-                            <div className="flex items-center gap-3 mb-3">
+                            <div className="flex items-center gap-3 mb-4">
                                 <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl">
-                                    <KeyRound className="w-6 h-6" />
+                                    <KeyRound className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold text-gray-900">Verify Pickup Code</h3>
-                                    <p className="text-xs text-gray-500 font-medium">Match code from the receiver to complete handover.</p>
+                                    <h3 className="text-lg font-black text-slate-900">Verify Pickup Code</h3>
+                                    <p className="text-xs text-slate-500 font-medium">Match code from the receiver to complete handover.</p>
                                 </div>
                             </div>
 
                             {verifyMessage && (
-                                <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-800 rounded-2xl flex items-start gap-2.5 text-sm font-bold animate-fade-in">
-                                    <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                                <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-start gap-2.5 text-xs font-bold animate-fade-in">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                                     <span>{verifyMessage}</span>
                                 </div>
                             )}
 
                             {verifyError && (
-                                <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl flex items-start gap-2.5 text-sm font-medium animate-fade-in">
-                                    <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                                <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl flex items-start gap-2.5 text-xs font-medium animate-fade-in">
+                                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                                     <span>{verifyError}</span>
                                 </div>
                             )}
 
-                            <form onSubmit={handleVerifyPickupCode} className="space-y-4 my-4">
+                            <form onSubmit={handleVerifyPickupCode} className="space-y-4 my-2">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                                        6-Digit Confirmation Code
+                                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                        Receiver's 6-Digit Code
                                     </label>
                                     <input
                                         type="text"
                                         maxLength={6}
-                                        placeholder="e.g. 748291"
-                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-2xl text-center text-2xl font-black font-mono tracking-widest bg-gray-50 focus:bg-white focus:ring-2 focus:ring-brand-500 outline-none transition-all"
+                                        placeholder="e.g. 482731"
+                                        className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-center text-2xl font-black font-mono tracking-widest bg-slate-50 focus:bg-white focus:ring-2 focus:ring-brand-500 outline-none transition-all"
                                         value={verifyCodeInput}
                                         onChange={(e) => setVerifyCodeInput(e.target.value.replace(/\D/g, ''))}
                                     />
@@ -250,81 +270,81 @@ const Dashboard = () => {
                                 <button
                                     type="submit"
                                     disabled={verifying || verifyCodeInput.length !== 6}
-                                    className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                                    className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl shadow-md shadow-brand-500/20 transition-all flex items-center justify-center gap-2 text-sm"
                                 >
                                     {verifying ? (
                                         <>
-                                            <Loader2 className="w-5 h-5 animate-spin" />
-                                            Verifying Code...
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <span>Verifying Code...</span>
                                         </>
                                     ) : (
                                         <>
-                                            <ShieldCheck className="w-5 h-5" />
-                                            Confirm Handover
+                                            <ShieldCheck className="w-4 h-4" />
+                                            <span>Confirm Handover</span>
                                         </>
                                     )}
                                 </button>
                             </form>
                         </div>
 
-                        <div className="pt-4 border-t border-gray-100 flex items-center gap-2 text-xs text-gray-400 font-medium">
-                            <Check className="w-4 h-4 text-brand-600 shrink-0" />
-                            <span>Matches receiver's reservation & updates rescued meal impact automatically.</span>
+                        <div className="pt-4 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-400 font-medium">
+                            <Check className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+                            <span>Automatically logs rescued meal metrics upon successful code match.</span>
                         </div>
                     </div>
 
-                    {/* Right: Live Incoming Reservations Status */}
-                    <div className="lg:col-span-7 bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100">
+                    {/* Right: Incoming Bookings */}
+                    <div className="lg:col-span-7 bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-100">
                         <div className="flex items-center justify-between mb-5">
-                            <h3 className="text-xl font-bold text-gray-900">Incoming Reservations</h3>
+                            <h3 className="text-lg font-black text-slate-900">Incoming Reservations</h3>
                             <Link to="/my-reservations" className="text-xs font-bold text-brand-600 hover:text-brand-700">
                                 View All ({incomingReservations.length}) →
                             </Link>
                         </div>
 
                         {incomingReservations.length === 0 ? (
-                            <div className="text-center py-10 text-gray-400">
-                                <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p className="text-sm font-semibold text-gray-700">No active reservations</p>
-                                <p className="text-xs">When users claim your surplus food, their pickup status will show here.</p>
+                            <div className="text-center py-12 text-slate-400">
+                                <Package className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                                <p className="text-xs font-bold text-slate-700">No active reservations yet</p>
+                                <p className="text-[11px] text-slate-400">When community members claim your food, bookings will appear here.</p>
                             </div>
                         ) : (
                             <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                                 {incomingReservations.slice(0, 4).map(res => (
                                     <div 
                                         key={res._id} 
-                                        className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+                                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
                                             res.pickerArrived && res.status === 'RESERVED'
                                                 ? 'bg-amber-50 border-amber-200 ring-2 ring-amber-400/20'
-                                                : 'bg-gray-50 border-gray-100 hover:bg-gray-100/70'
+                                                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/70'
                                         }`}
                                     >
                                         <div className="flex items-center gap-3 min-w-0">
                                             <img
                                                 src={res.foodListing?.image || DEFAULT_FOOD_IMAGE}
                                                 onError={(e) => { e.currentTarget.src = DEFAULT_FOOD_IMAGE; }}
-                                                className="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-200"
+                                                className="w-12 h-12 rounded-xl object-cover shrink-0 bg-slate-200"
                                                 alt=""
                                             />
                                             <div className="min-w-0">
-                                                <h4 className="font-bold text-gray-900 text-sm truncate">{res.foodListing?.foodName || 'Surplus Item'}</h4>
-                                                <p className="text-xs text-gray-500 font-medium">
-                                                    Reserved by <span className="font-bold text-gray-700">{res.receiver?.name || 'User'}</span> • {res.quantity} {res.foodListing?.unit || 'items'}
+                                                <h4 className="font-bold text-slate-900 text-xs truncate">{res.foodListing?.foodName || 'Surplus Item'}</h4>
+                                                <p className="text-[11px] text-slate-500 font-medium">
+                                                    Claimed by <strong className="text-slate-800">{res.receiver?.name || 'Receiver'}</strong> • {res.quantity} {res.foodListing?.unit || 'items'}
                                                 </p>
                                             </div>
                                         </div>
 
                                         <div className="text-right shrink-0">
                                             {res.status === 'COLLECTED' ? (
-                                                <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold inline-flex items-center">
+                                                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-[11px] font-black inline-flex items-center">
                                                     ✓ Collected
                                                 </span>
                                             ) : res.pickerArrived ? (
-                                                <span className="px-2.5 py-1 bg-amber-200 text-amber-900 rounded-lg text-xs font-black inline-flex items-center gap-1 animate-pulse">
-                                                    🔔 Picker Arrived
+                                                <span className="px-2.5 py-1 bg-amber-200 text-amber-900 rounded-lg text-[11px] font-black inline-flex items-center gap-1 animate-pulse">
+                                                    🔔 Arrived
                                                 </span>
                                             ) : (
-                                                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold inline-flex items-center">
+                                                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-[11px] font-bold">
                                                     En Route
                                                 </span>
                                             )}
@@ -338,89 +358,25 @@ const Dashboard = () => {
                 </div>
             )}
 
-            {/* SUPPLIER: Recent Food Listings Table */}
-            {isSupplier && (
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                        <h3 className="text-lg font-bold text-gray-900">Your Recent Listings</h3>
-                        <Link to="/my-listings" className="text-sm font-semibold text-brand-600 hover:text-brand-700">View All Listings →</Link>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr>
-                                    <th className="px-6 py-4 border-b border-gray-100 text-xs font-bold uppercase tracking-wider text-gray-400">Food</th>
-                                    <th className="px-6 py-4 border-b border-gray-100 text-xs font-bold uppercase tracking-wider text-gray-400">Quantity</th>
-                                    <th className="px-6 py-4 border-b border-gray-100 text-xs font-bold uppercase tracking-wider text-gray-400">Expiry Time</th>
-                                    <th className="px-6 py-4 border-b border-gray-100 text-xs font-bold uppercase tracking-wider text-gray-400">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {recentListings.map(listing => {
-                                    const isExpired = listing.status === 'EXPIRED' || new Date(listing.expiryTime) < new Date();
-                                    return (
-                                        <tr key={listing._id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="flex items-center">
-                                                    <img 
-                                                        src={listing.image || DEFAULT_FOOD_IMAGE} 
-                                                        onError={(e) => { e.currentTarget.src = DEFAULT_FOOD_IMAGE; }}
-                                                        className="w-10 h-10 rounded-lg object-cover mr-3 bg-gray-100" 
-                                                        alt="" 
-                                                    />
-                                                    <span className="font-bold text-gray-900">{listing.foodName}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 font-medium text-gray-600">{listing.quantity} {listing.unit}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500 font-medium">
-                                                {new Date(listing.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className={`px-2.5 py-1 rounded inline-flex text-xs font-bold ${
-                                                    isExpired 
-                                                        ? 'bg-red-100 text-red-700' 
-                                                        : listing.status === 'AVAILABLE' 
-                                                            ? 'bg-brand-100 text-brand-700' 
-                                                            : 'bg-gray-100 text-gray-600'
-                                                }`}>
-                                                    {isExpired ? 'EXPIRED' : listing.status}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {recentListings.length === 0 && (
-                                    <tr>
-                                        <td colSpan="4" className="px-6 py-8 text-center text-gray-500 font-medium">
-                                            No recent listings. You haven't posted any surplus food yet.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* RECEIVER: Active Reservations & Quick Track */}
+            {/* RECEIVER: Active Pickups & Action */}
             {!isSupplier && (
                 <div className="space-y-6">
                     {activeReservedPickups.length > 0 && (
-                        <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100">
-                            <h3 className="text-xl font-bold text-gray-900 mb-4">Your Active Pickups</h3>
+                        <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-100">
+                            <h3 className="text-xl font-black text-slate-900 mb-4">Your Active Pickups Ready for Collection</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {activeReservedPickups.map(res => (
-                                    <div key={res._id} className="bg-brand-50/50 border border-brand-200 rounded-2xl p-5 flex items-center justify-between">
+                                    <div key={res._id} className="bg-brand-50/50 border border-brand-200 rounded-2xl p-4 flex items-center justify-between">
                                         <div className="flex items-center gap-3 min-w-0">
                                             <img
                                                 src={res.foodListing?.image || DEFAULT_FOOD_IMAGE}
                                                 onError={(e) => { e.currentTarget.src = DEFAULT_FOOD_IMAGE; }}
-                                                className="w-14 h-14 rounded-xl object-cover bg-gray-100 shrink-0"
+                                                className="w-14 h-14 rounded-xl object-cover bg-slate-100 shrink-0"
                                                 alt=""
                                             />
                                             <div className="min-w-0">
-                                                <h4 className="font-bold text-gray-900 truncate">{res.foodListing?.foodName || 'Reserved Item'}</h4>
-                                                <p className="text-xs text-gray-500 font-medium">Pickup Code: <span className="font-mono font-black text-brand-700 text-sm">{res.pickupCode}</span></p>
+                                                <h4 className="font-bold text-slate-900 text-sm truncate">{res.foodListing?.foodName || 'Reserved Item'}</h4>
+                                                <p className="text-xs text-slate-500 font-medium">Pickup Code: <span className="font-mono font-black text-brand-700 text-sm">{res.pickupCode}</span></p>
                                             </div>
                                         </div>
                                         <Link 
@@ -435,15 +391,16 @@ const Dashboard = () => {
                         </div>
                     )}
 
-                    <div className="bg-brand-50 rounded-3xl border border-brand-100 p-8 flex flex-col md:flex-row justify-between items-center">
+                    {/* Fast Rescue Promo */}
+                    <div className="bg-gradient-to-r from-brand-600 to-emerald-700 text-white rounded-3xl p-8 flex flex-col md:flex-row justify-between items-center shadow-lg">
                         <div className="mb-4 md:mb-0">
-                            <h3 className="text-xl font-bold text-brand-900 mb-2">Ready to Rescue?</h3>
-                            <p className="text-brand-700 font-medium max-w-lg">
-                                Discover fresh surplus food posted by local restaurants, canteens, and stores near you.
+                            <h3 className="text-xl font-black mb-1">Ready to Rescue More Food?</h3>
+                            <p className="text-emerald-100 text-sm font-medium max-w-lg">
+                                Fresh surplus from Indiranagar, Koramangala, and Jayanagar is live on the map.
                             </p>
                         </div>
-                        <Link to="/find-food" className="bg-brand-600 text-white font-bold px-6 py-3.5 rounded-xl hover:bg-brand-700 transition-colors shadow-md shrink-0">
-                            Find Nearby Food
+                        <Link to="/find-food" className="bg-white text-emerald-900 font-bold px-6 py-3.5 rounded-xl hover:bg-emerald-50 transition-colors shadow-md text-sm shrink-0">
+                            Explore Live Food Map →
                         </Link>
                     </div>
                 </div>
