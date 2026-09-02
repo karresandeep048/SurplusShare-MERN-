@@ -86,6 +86,7 @@ const FoodDetails = () => {
                     <div className="lg:w-1/2 relative bg-gray-100 min-h-[300px] sm:min-h-[400px]">
                         <img
                             src={food.image || "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=800&q=80"}
+                            onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=800&q=80"; }}
                             alt={food.foodName}
                             className="absolute inset-0 w-full h-full object-cover"
                         />
@@ -122,11 +123,21 @@ const FoodDetails = () => {
                             </div>
 
                             <div>
-                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Distance</h4>
-                                <div className="flex items-center text-gray-900 font-semibold text-lg">
-                                    <MapPin className="w-5 h-5 mr-2 text-brand-500" />
-                                    1.2 km away
+                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Pickup Location</h4>
+                                <div className="flex items-center text-gray-900 font-semibold text-sm truncate" title={food.location}>
+                                    <MapPin className="w-5 h-5 mr-1.5 text-brand-500 shrink-0" />
+                                    <span className="truncate">{food.location || 'Location provided upon booking'}</span>
                                 </div>
+                                {food.coordinates?.lat && food.coordinates?.lng && (
+                                    <a
+                                        href={`https://www.google.com/maps/search/?api=1&query=${food.coordinates.lat},${food.coordinates.lng}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs font-bold text-brand-600 hover:text-brand-700 inline-flex items-center mt-1"
+                                    >
+                                        📍 Open in Google Maps →
+                                    </a>
+                                )}
                             </div>
 
                             <div>

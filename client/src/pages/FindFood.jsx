@@ -116,7 +116,12 @@ const FindFood = () => {
                                     <Popup className="rounded-xl overflow-hidden custom-popup p-0 border-0 shadow-lg">
                                         <div className="-m-3 min-w-[220px]">
                                             <div className="h-28 w-full bg-gray-200">
-                                                <img src={food.image || "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80"} alt={food.foodName} className="w-full h-full object-cover" />
+                                                <img 
+                                                    src={food.image || "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80"} 
+                                                    onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80"; }}
+                                                    alt={food.foodName} 
+                                                    className="w-full h-full object-cover" 
+                                                />
                                             </div>
                                             <div className="p-4">
                                                 <h4 className="font-bold text-gray-900 leading-tight mb-1 truncate" title={food.foodName}>{food.foodName}</h4>
