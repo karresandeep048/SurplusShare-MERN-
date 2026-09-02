@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import bcrypt from 'bcrypt';
 import User from '../models/User.js';
 import FoodListing from '../models/FoodListing.js';
 import Reservation from '../models/Reservation.js';
@@ -8,37 +9,75 @@ dotenv.config();
 
 export const cleanDB = async () => {
     try {
-        const DB_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/surplusshare';
+        const DB_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
         console.log('Connecting to MongoDB Atlas...');
         await mongoose.connect(DB_URI);
         console.log('✓ Connected successfully.');
 
-        // 1. Delete all Food Listings
+        // 1. Delete all sample food listing items
         const listingResult = await FoodListing.deleteMany({});
-        console.log(`✓ Deleted ${listingResult.deletedCount} food listing items.`);
+        console.log(`✓ Deleted ${listingResult.deletedCount} sample food listing items.`);
 
-        // 2. Delete all Reservations
+        // 2. Delete all sample reservations
         const reservationResult = await Reservation.deleteMany({});
-        console.log(`✓ Deleted ${reservationResult.deletedCount} reservation items.`);
+        console.log(`✓ Deleted ${reservationResult.deletedCount} sample reservation items.`);
 
-        // 3. Remove demo accounts (e.g., demo.* and *@demo.com)
-        const demoUserResult = await User.deleteMany({
-            $or: [
-                { email: { $regex: /@demo\.com$/i } },
-                { email: { $regex: /^demo\./i } }
-            ]
-        });
-        console.log(`✓ Deleted ${demoUserResult.deletedCount} demo user accounts.`);
-
-        // 4. Reset rescue metrics on remaining registered user accounts
+        // 3. Reset rescue metrics on user accounts
         const resetResult = await User.updateMany({}, { $set: { mealsRescued: 0 } });
-        console.log(`✓ Reset rescue metrics on ${resetResult.modifiedCount} registered user accounts.`);
+        console.log(`✓ Reset rescue metrics on ${resetResult.modifiedCount} user accounts.`);
 
-        const remainingUsers = await User.find({}, 'name email role');
-        console.log('\nRemaining active registered users:');
-        remainingUsers.forEach(u => console.log(` - ${u.name} (${u.email}) [${u.role}]`));
+        // 4. Ensure the demo accounts exist and are ready for 1-click testing
+        const hashedPassword = await bcrypt.hash('password123', 10);
+        
+        await User.findOneAndUpdate(
+            { email: 'demo.supplier@surplusshare.com' },
+            {
+                name: 'Green Bowl Restaurant',
+                email: 'demo.supplier@surplusshare.com',
+                password: hashedPassword,
+                role: 'supplier',
+                location: 'Indiranagar, Bengaluru',
+                mealsRescued: 0
+            },
+            { upsert: true, returnDocument: 'after' }
+        );
 
-        console.log('\n✅ Successfully removed all test items from the database!');
+        await User.findOneAndUpdate(
+            { email: 'demo.receiver@surplusshare.com' },
+            {
+                name: 'Arjun',
+                email: 'demo.receiver@surplusshare.com',
+                password: hashedPassword,
+                role: 'receiver',
+                location: 'Koramangala, Bengaluru',
+                mealsRescued: 0
+            },
+            { upsert: true, returnDocument: 'after' }
+        );
+
+        await User.findOneAndUpdate(
+            { email: 'demo.admin@surplusshare.com' },
+            {
+                name: 'SurplusShare Admin',
+                email: 'demo.admin@surplusshare.com',
+                password: hashedPassword,
+                role: 'admin',
+                location: 'Bengaluru, India',
+                mealsRescued: 0
+            },
+            { upsert: true, returnDocument: 'after' }
+        );
+
+        const totalUsers = await User.countDocuments();
+        const totalListings = await FoodListing.countDocuments();
+        const totalReservations = await Reservation.countDocuments();
+
+        console.log(`\n📊 Database State:`);
+        console.log(`- Food Listings: ${totalListings}`);
+        console.log(`- Reservations: ${totalReservations}`);
+        console.log(`- User Accounts: ${totalUsers}`);
+
+        console.log('\n✅ Successfully removed all sample items from MongoDB Atlas!');
         process.exit(0);
     } catch (err) {
         console.error('❌ Clean DB error:', err);
