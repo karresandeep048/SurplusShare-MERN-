@@ -4,32 +4,67 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { Package, TrendingUp, CheckCircle2, List as ListIcon, Heart, Leaf } from 'lucide-react';
 
+const DEFAULT_FOOD_IMAGE = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=100&q=80';
+
 const Dashboard = () => {
     const { user } = useContext(AuthContext);
     const [recentListings, setRecentListings] = useState([]);
+    const [supplierStats, setSupplierStats] = useState({
+        active: 0,
+        reserved: 0,
+        collected: 0,
+        rescued: 0
+    });
+    const [receiverStats, setReceiverStats] = useState({
+        rescued: 0,
+        pickups: 0,
+        total: 0
+    });
+
+    const isSupplier = user?.role?.toLowerCase() === 'supplier';
 
     useEffect(() => {
-        if (user?.role === 'supplier') {
+        if (isSupplier) {
             axios.get('/api/listings/my')
-                .then(res => setRecentListings(res.data.slice(0, 3)))
+                .then(res => {
+                    const data = res.data || [];
+                    setRecentListings(data.slice(0, 3));
+                    const active = data.filter(l => l.status === 'AVAILABLE').length;
+                    const reserved = data.filter(l => l.status === 'RESERVED' || l.status === 'PARTIALLY_RESERVED').length;
+                    const collected = data.filter(l => l.status === 'COLLECTED').length;
+                    const rescued = data.filter(l => l.status === 'COLLECTED').reduce((sum, l) => sum + (l.quantity || 0), 0);
+                    setSupplierStats({ active, reserved, collected, rescued });
+                })
+                .catch(err => console.error(err));
+        } else {
+            axios.get('/api/reservations/my')
+                .then(res => {
+                    const data = res.data || [];
+                    const pickups = data.filter(r => r.status === 'COLLECTED').length;
+                    setReceiverStats({
+                        rescued: user?.mealsRescued ?? 0,
+                        pickups,
+                        total: data.length
+                    });
+                })
                 .catch(err => console.error(err));
         }
-    }, [user]);
+    }, [user, isSupplier]);
 
     const supplierCards = [
-        { label: 'Active Listings', value: '12', icon: ListIcon, color: 'text-indigo-600', bg: 'bg-indigo-100' },
-        { label: 'Reserved Food', value: '6', icon: Package, color: 'text-amber-600', bg: 'bg-amber-100' },
-        { label: 'Food Collected', value: '28', icon: CheckCircle2, color: 'text-brand-600', bg: 'bg-brand-100' },
-        { label: 'Meals Rescued', value: '156', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+        { label: 'Active Listings', value: supplierStats.active, icon: ListIcon, color: 'text-indigo-600', bg: 'bg-indigo-100' },
+        { label: 'Reserved Food', value: supplierStats.reserved, icon: Package, color: 'text-amber-600', bg: 'bg-amber-100' },
+        { label: 'Food Collected', value: supplierStats.collected, icon: CheckCircle2, color: 'text-brand-600', bg: 'bg-brand-100' },
+        { label: 'Meals Rescued', value: supplierStats.rescued, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-100' },
     ];
 
     const receiverCards = [
-        { label: 'Meals Rescued', value: user?.mealsRescued || '42', icon: Heart, color: 'text-brand-600', bg: 'bg-brand-100' },
-        { label: 'Successful Pickups', value: '18', icon: CheckCircle2, color: 'text-blue-600', bg: 'bg-blue-100' },
-        { label: 'Rescue Actions', value: '42', icon: Leaf, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+        { label: 'Meals Rescued', value: receiverStats.rescued, icon: Heart, color: 'text-brand-600', bg: 'bg-brand-100' },
+        { label: 'Successful Pickups', value: receiverStats.pickups, icon: CheckCircle2, color: 'text-blue-600', bg: 'bg-blue-100' },
+        { label: 'Rescue Actions', value: receiverStats.total, icon: Leaf, color: 'text-emerald-600', bg: 'bg-emerald-100' },
     ];
 
-    const cards = user?.role === 'supplier' ? supplierCards : receiverCards;
+    const cards = isSupplier ? supplierCards : receiverCards;
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -52,7 +87,7 @@ const Dashboard = () => {
                 ))}
             </div>
 
-            {user?.role === 'supplier' && (
+            {isSupplier && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                         <h3 className="text-lg font-bold text-gray-900">Recent Listings</h3>
@@ -73,7 +108,12 @@ const Dashboard = () => {
                                     <tr key={listing._id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center">
-                                                <img src={listing.image || 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=100&q=80'} className="w-10 h-10 rounded-lg object-cover mr-3 bg-gray-100" alt="" />
+                                                <img 
+                                                    src={listing.image || DEFAULT_FOOD_IMAGE} 
+                                                    onError={(e) => { e.currentTarget.src = DEFAULT_FOOD_IMAGE; }}
+                                                    className="w-10 h-10 rounded-lg object-cover mr-3 bg-gray-100" 
+                                                    alt="" 
+                                                />
                                                 <span className="font-bold text-gray-900">{listing.foodName}</span>
                                             </div>
                                         </td>
@@ -101,7 +141,7 @@ const Dashboard = () => {
                 </div>
             )}
 
-            {user?.role === 'receiver' && (
+            {!isSupplier && (
                 <div className="bg-brand-50 rounded-2xl border border-brand-100 p-8 flex flex-col md:flex-row justify-between items-center mt-10">
                     <div className="mb-4 md:mb-0">
                         <h3 className="text-xl font-bold text-brand-900 mb-2">Ready to Rescue?</h3>

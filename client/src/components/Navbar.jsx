@@ -24,7 +24,7 @@ const Navbar = () => {
                             <Link to="/find-food" className="border-transparent text-gray-600 hover:border-brand-300 hover:text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors">
                                 <Search className="w-4 h-4 mr-1.5" /> Find Food
                             </Link>
-                            {user && user.role === 'SUPPLIER' && (
+                            {user && user.role?.toLowerCase() === 'supplier' && (
                                 <>
                                     <Link to="/post-food" className="border-transparent text-gray-600 hover:border-brand-300 hover:text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors">
                                         <PlusSquare className="w-4 h-4 mr-1.5" /> Post Food
@@ -34,7 +34,7 @@ const Navbar = () => {
                                     </Link>
                                 </>
                             )}
-                            {user && user.role === 'RECEIVER' && (
+                            {user && user.role?.toLowerCase() === 'receiver' && (
                                 <Link to="/my-reservations" className="border-transparent text-gray-600 hover:border-brand-300 hover:text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors">
                                     <List className="w-4 h-4 mr-1.5" /> My Reservations
                                 </Link>

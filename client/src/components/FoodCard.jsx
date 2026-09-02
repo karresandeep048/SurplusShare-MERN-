@@ -23,6 +23,7 @@ export const FoodCard = ({ food, compact = false }) => {
             <div className={`${compact ? 'h-48' : 'h-48 sm:h-auto sm:w-48'} shrink-0 relative bg-gray-100`}>
                 <img
                     src={food.image || "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=400&q=80"}
+                    onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=400&q=80"; }}
                     alt={food.foodName}
                     className="w-full h-full object-cover"
                 />

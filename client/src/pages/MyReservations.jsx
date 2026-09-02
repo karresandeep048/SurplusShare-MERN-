@@ -85,6 +85,7 @@ const MyReservations = () => {
                         <div key={res._id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center gap-6">
                             <img
                                 src={res.foodListing?.image || 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80'}
+                                onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80'; }}
                                 alt="Food"
                                 className="w-full sm:w-28 h-28 object-cover rounded-xl bg-gray-100 shrink-0"
                             />

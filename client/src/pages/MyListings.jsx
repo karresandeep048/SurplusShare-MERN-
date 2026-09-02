@@ -63,6 +63,7 @@ const MyListings = () => {
                             <div className="flex items-start gap-4 mb-4">
                                 <img
                                     src={listing.image || 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80'}
+                                    onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80'; }}
                                     alt="Food"
                                     className="w-24 h-24 object-cover rounded-xl bg-gray-100 shrink-0"
                                 />
