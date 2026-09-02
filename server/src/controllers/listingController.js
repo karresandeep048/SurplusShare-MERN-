@@ -1,7 +1,10 @@
 import FoodListing from '../models/FoodListing.js';
+import { autoExpireItems } from './reservationController.js';
 
 export const createListing = async (req, res) => {
     try {
+        await autoExpireItems();
+
         const listing = new FoodListing({
             ...req.body,
             supplier: req.user.id,
@@ -17,8 +20,13 @@ export const createListing = async (req, res) => {
 
 export const getAllListings = async (req, res) => {
     try {
+        await autoExpireItems();
+
         // Basic filter for non-expired, available listings. 
-        const listings = await FoodListing.find({ status: 'AVAILABLE', expiryTime: { $gt: new Date() } })
+        const listings = await FoodListing.find({ 
+            status: { $in: ['AVAILABLE', 'PARTIALLY_RESERVED'] }, 
+            expiryTime: { $gt: new Date() } 
+        })
             .populate('supplier', 'name role')
             .sort({ createdAt: -1 });
         res.json(listings);
@@ -29,6 +37,8 @@ export const getAllListings = async (req, res) => {
 
 export const getMyListings = async (req, res) => {
     try {
+        await autoExpireItems();
+
         const listings = await FoodListing.find({ supplier: req.user.id }).sort({ createdAt: -1 });
         res.json(listings);
     } catch (err) {
@@ -38,6 +48,8 @@ export const getMyListings = async (req, res) => {
 
 export const updateListing = async (req, res) => {
     try {
+        await autoExpireItems();
+
         const listing = await FoodListing.findOneAndUpdate(
             { _id: req.params.id, supplier: req.user.id },
             req.body,
@@ -50,9 +62,21 @@ export const updateListing = async (req, res) => {
     }
 };
 
+export const deleteListing = async (req, res) => {
+    try {
+        const listing = await FoodListing.findOneAndDelete({ _id: req.params.id, supplier: req.user.id });
+        if (!listing) return res.status(404).json({ message: 'Listing not found or unauthorized' });
+        res.json({ message: 'Listing deleted successfully' });
+    } catch (err) {
+        res.status(400).json({ message: 'Error deleting listing', error: err.message });
+    }
+};
+
 export const getListingById = async (req, res) => {
     try {
-        const listing = await FoodListing.findById(req.params.id).populate('supplier', 'name role');
+        await autoExpireItems();
+
+        const listing = await FoodListing.findById(req.params.id).populate('supplier', 'name role profileImage location');
         if (!listing) return res.status(404).json({ message: 'Listing not found' });
         res.json(listing);
     } catch (err) {
