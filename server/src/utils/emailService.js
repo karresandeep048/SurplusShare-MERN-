@@ -23,8 +23,9 @@ export const createTransporter = () => {
     if (!transporterInstance) {
         transporterInstance = nodemailer.createTransport({
             host: 'smtp.gmail.com',
-            port: 465,
-            secure: true,
+            port: 587,
+            secure: false, // STARTTLS for port 587
+            requireTLS: true,
             lookup: (hostname, options, callback) => {
                 return dns.lookup(hostname, { family: 4, all: false }, callback);
             },
