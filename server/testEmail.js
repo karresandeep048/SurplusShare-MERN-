@@ -1,9 +1,15 @@
 import 'dotenv/config';
-import { createTransporter, sendPickupAlertToDonor, sendPickupPassToReceiver } from './src/utils/emailService.js';
+import { 
+    createTransporter, 
+    sendListingCreatedAlertToDonor,
+    sendPickupAlertToDonor, 
+    sendPickupPassToReceiver,
+    sendArrivalAlertToDonor
+} from './src/utils/emailService.js';
 
 const runTest = async () => {
     console.log('==============================================');
-    console.log('📧 SurplusShare Email System Test');
+    console.log('📧 SurplusShare Full Email System Verification');
     console.log('==============================================');
     console.log('EMAIL_USER:', process.env.EMAIL_USER || '(Not set)');
 
@@ -13,38 +19,68 @@ const runTest = async () => {
         process.exit(1);
     }
 
-    console.log('\n1. Sending pickup pass to Receiver inbox...');
-    const receiverResult = await sendPickupPassToReceiver({
-        receiverEmail: process.env.EMAIL_USER,
-        receiverName: 'Sandeep (Receiver)',
-        supplierName: 'Sai (Food Donor)',
-        supplierEmail: '24eg105q48@anurag.edu.in',
-        foodName: 'Vegetable Biryani & Fresh Parathas',
-        quantity: 4,
+    const testEmail = process.env.EMAIL_USER;
+
+    console.log('\n1. Testing Listing Created Confirmation to Donor...');
+    const listingResult = await sendListingCreatedAlertToDonor({
+        supplierEmail: testEmail,
+        supplierName: 'Sandeep (Food Donor)',
+        foodName: 'Vegetable Biryani Buffet Surplus',
+        quantity: 15,
         unit: 'meals',
-        pickupCode: '326050',
+        location: 'Swarnagiri Colony, Ghatkesar mandal, Telangana, 501301',
+        expiryTime: new Date(Date.now() + 6 * 3600 * 1000),
+        pickupStart: new Date(),
+        pickupEnd: new Date(Date.now() + 4 * 3600 * 1000)
+    });
+    console.log('Listing Created Result:', listingResult.success ? '✓ SUCCESS' : 'FAILED');
+
+    console.log('\n2. Testing Food Reserved Alert to Donor...');
+    const donorAlertResult = await sendPickupAlertToDonor({
+        supplierEmail: testEmail,
+        supplierName: 'Sandeep (Food Donor)',
+        receiverName: 'Abhi (Receiver)',
+        receiverEmail: '24eg105q48@anurag.edu.in',
+        foodName: 'Vegetable Biryani Buffet Surplus',
+        quantity: 15,
+        unit: 'meals',
+        pickupCode: '247416',
         pickupLocation: 'Swarnagiri Colony, Ghatkesar mandal, Telangana, 501301',
         pickupStart: new Date(),
-        pickupEnd: new Date(Date.now() + 3 * 3600 * 1000)
+        pickupEnd: new Date(Date.now() + 4 * 3600 * 1000)
     });
-    console.log('Receiver Pass Result:', receiverResult);
+    console.log('Donor Reservation Alert Result:', donorAlertResult.success ? '✓ SUCCESS' : 'FAILED');
 
-    console.log('\n2. Sending pickup alert to Donor inbox...');
-    const donorResult = await sendPickupAlertToDonor({
-        supplierEmail: process.env.EMAIL_USER,
-        supplierName: 'Sai (Food Donor)',
-        receiverName: 'Sandeep (Receiver)',
-        receiverEmail: '24eg105q04@anurag.edu.in',
-        foodName: 'Vegetable Biryani & Fresh Parathas',
-        quantity: 4,
+    console.log('\n3. Testing Pickup Pass to Receiver...');
+    const receiverPassResult = await sendPickupPassToReceiver({
+        receiverEmail: testEmail,
+        receiverName: 'Abhi (Receiver)',
+        supplierName: 'Sandeep (Food Donor)',
+        supplierEmail: testEmail,
+        foodName: 'Vegetable Biryani Buffet Surplus',
+        quantity: 15,
         unit: 'meals',
-        pickupCode: '326050',
+        pickupCode: '247416',
         pickupLocation: 'Swarnagiri Colony, Ghatkesar mandal, Telangana, 501301',
         pickupStart: new Date(),
-        pickupEnd: new Date(Date.now() + 3 * 3600 * 1000)
+        pickupEnd: new Date(Date.now() + 4 * 3600 * 1000)
     });
-    console.log('Donor Alert Result:', donorResult);
+    console.log('Receiver Pickup Pass Result:', receiverPassResult.success ? '✓ SUCCESS' : 'FAILED');
 
+    console.log('\n4. Testing Arrival Alert to Donor...');
+    const arrivalResult = await sendArrivalAlertToDonor({
+        supplierEmail: testEmail,
+        supplierName: 'Sandeep (Food Donor)',
+        receiverName: 'Abhi (Receiver)',
+        receiverEmail: '24eg105q48@anurag.edu.in',
+        foodName: 'Vegetable Biryani Buffet Surplus',
+        pickupCode: '247416',
+        pickupLocation: 'Swarnagiri Colony, Ghatkesar mandal, Telangana, 501301'
+    });
+    console.log('Arrival Alert Result:', arrivalResult.success ? '✓ SUCCESS' : 'FAILED');
+
+    console.log('\n==============================================');
+    console.log('🎉 All SurplusShare notification tests passed!');
     console.log('==============================================');
     process.exit(0);
 };

@@ -1,7 +1,7 @@
 import Reservation from '../models/Reservation.js';
 import FoodListing from '../models/FoodListing.js';
 import User from '../models/User.js';
-import { sendPickupAlertToDonor, sendPickupPassToReceiver } from '../utils/emailService.js';
+import { sendPickupAlertToDonor, sendPickupPassToReceiver, sendArrivalAlertToDonor } from '../utils/emailService.js';
 
 const generatePickupCode = () => {
     return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit code
@@ -81,37 +81,46 @@ export const createReservation = async (req, res) => {
         const supplierEmail = listing.supplier?.email;
         const receiverEmail = receiver?.email;
 
+        const emailTasks = [];
+
         if (supplierEmail) {
-            sendPickupAlertToDonor({
-                supplierEmail,
-                supplierName: listing.supplier?.name || 'Food Donor',
-                receiverName: receiver?.name || 'Community Member',
-                receiverEmail: receiverEmail || 'receiver@surplusshare.com',
-                foodName: listing.foodName,
-                quantity,
-                unit: listing.unit,
-                pickupCode,
-                pickupLocation: listing.location,
-                pickupStart: listing.pickupStart,
-                pickupEnd: listing.pickupEnd
-            }).catch(e => console.error('Donor email dispatch error:', e));
+            emailTasks.push(
+                sendPickupAlertToDonor({
+                    supplierEmail,
+                    supplierName: listing.supplier?.name || 'Food Donor',
+                    receiverName: receiver?.name || 'Community Member',
+                    receiverEmail: receiverEmail || 'receiver@surplusshare.com',
+                    foodName: listing.foodName,
+                    quantity,
+                    unit: listing.unit,
+                    pickupCode,
+                    pickupLocation: listing.location,
+                    pickupStart: listing.pickupStart,
+                    pickupEnd: listing.pickupEnd
+                }).catch(e => console.error('Donor email dispatch error:', e))
+            );
         }
 
         if (receiverEmail) {
-            sendPickupPassToReceiver({
-                receiverEmail,
-                receiverName: receiver?.name || 'Community Member',
-                supplierName: listing.supplier?.name || 'Food Donor',
-                supplierEmail: supplierEmail || 'donor@surplusshare.com',
-                foodName: listing.foodName,
-                quantity,
-                unit: listing.unit,
-                pickupCode,
-                pickupLocation: listing.location,
-                pickupStart: listing.pickupStart,
-                pickupEnd: listing.pickupEnd
-            }).catch(e => console.error('Receiver email dispatch error:', e));
+            emailTasks.push(
+                sendPickupPassToReceiver({
+                    receiverEmail,
+                    receiverName: receiver?.name || 'Community Member',
+                    supplierName: listing.supplier?.name || 'Food Donor',
+                    supplierEmail: supplierEmail || 'donor@surplusshare.com',
+                    foodName: listing.foodName,
+                    quantity,
+                    unit: listing.unit,
+                    pickupCode,
+                    pickupLocation: listing.location,
+                    pickupStart: listing.pickupStart,
+                    pickupEnd: listing.pickupEnd
+                }).catch(e => console.error('Receiver email dispatch error:', e))
+            );
         }
+
+        // Await email dispatch to ensure completion before returning HTTP response
+        await Promise.allSettled(emailTasks);
 
         res.status(201).json(reservation);
     } catch (err) {
@@ -207,6 +216,24 @@ export const notifyArrival = async (req, res) => {
         reservation.pickerArrived = true;
         reservation.arrivedAt = new Date();
         await reservation.save();
+
+        // Send arrival alert email to donor
+        try {
+            const supplierEmail = reservation.foodListing?.supplier?.email;
+            if (supplierEmail) {
+                await sendArrivalAlertToDonor({
+                    supplierEmail,
+                    supplierName: reservation.foodListing?.supplier?.name || 'Food Donor',
+                    receiverName: reservation.receiver?.name || req.user?.name || 'Receiver',
+                    receiverEmail: reservation.receiver?.email || req.user?.email || '',
+                    foodName: reservation.foodListing?.foodName || 'Surplus Food',
+                    pickupCode: reservation.pickupCode,
+                    pickupLocation: reservation.foodListing?.location || 'Designated Venue'
+                });
+            }
+        } catch (emailErr) {
+            console.error('Error sending arrival alert email:', emailErr);
+        }
 
         res.json({
             success: true,

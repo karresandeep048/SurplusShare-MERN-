@@ -1,5 +1,7 @@
 import FoodListing from '../models/FoodListing.js';
+import User from '../models/User.js';
 import { autoExpireItems } from './reservationController.js';
+import { sendListingCreatedAlertToDonor } from '../utils/emailService.js';
 
 export const createListing = async (req, res) => {
     try {
@@ -12,6 +14,27 @@ export const createListing = async (req, res) => {
             status: 'AVAILABLE'
         });
         await listing.save();
+
+        // Send email confirmation to donor
+        try {
+            const donor = await User.findById(req.user.id);
+            if (donor && donor.email) {
+                await sendListingCreatedAlertToDonor({
+                    supplierEmail: donor.email,
+                    supplierName: donor.name || 'Food Donor',
+                    foodName: listing.foodName,
+                    quantity: listing.quantity,
+                    unit: listing.unit,
+                    location: listing.location,
+                    expiryTime: listing.expiryTime,
+                    pickupStart: listing.pickupStart,
+                    pickupEnd: listing.pickupEnd
+                });
+            }
+        } catch (emailErr) {
+            console.error('Error sending listing creation email:', emailErr);
+        }
+
         res.status(201).json(listing);
     } catch (err) {
         res.status(400).json({ message: 'Error creating listing', error: err.message });

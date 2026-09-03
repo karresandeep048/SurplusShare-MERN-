@@ -295,3 +295,204 @@ export const sendPickupPassToReceiver = async ({
     }
 };
 
+/**
+ * Sends a confirmation email to Food Donor when they publish a new food listing.
+ */
+export const sendListingCreatedAlertToDonor = async ({
+    supplierEmail,
+    supplierName,
+    foodName,
+    quantity,
+    unit,
+    location,
+    expiryTime,
+    pickupStart,
+    pickupEnd
+}) => {
+    if (!supplierEmail) return { delivered: false, simulated: true, success: false, reason: 'No supplier email' };
+
+    const fromEmail = process.env.EMAIL_USER || process.env.GMAIL_USER || 'notifications@surplusshare.com';
+    const formattedExpiry = expiryTime ? new Date(expiryTime).toLocaleString() : 'N/A';
+    const formattedStart = pickupStart ? new Date(pickupStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const formattedEnd = pickupEnd ? new Date(pickupEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const subject = `🍲 Your Surplus Food Listing is Live: "${foodName}" on SurplusShare`;
+
+    const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+                .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+                .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; padding: 28px; text-align: center; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+                .content { padding: 32px; }
+                .badge { display: inline-block; background: #ecfdf5; color: #047857; padding: 6px 14px; border-radius: 12px; font-weight: 700; font-size: 13px; margin-bottom: 20px; }
+                .details-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+                .details-table td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+                .details-table td.label { color: #64748b; font-weight: 600; width: 40%; }
+                .details-table td.value { color: #0f172a; font-weight: 700; }
+                .footer { text-align: center; padding: 20px; font-size: 12px; color: #94a3b8; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="header">
+                    <h1>Food Donation Published!</h1>
+                    <p style="margin: 6px 0 0; font-size: 14px; opacity: 0.9;">Your surplus food is now visible to nearby community members.</p>
+                </div>
+                <div class="content">
+                    <span class="badge">✨ Listing Active & Ready</span>
+                    <p style="font-size: 16px; line-height: 1.5; margin-top: 0;">
+                        Hello <strong>${supplierName}</strong>,
+                    </p>
+                    <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+                        Thank you for contributing to zero food waste! Your surplus listing <strong>"${foodName}"</strong> has been successfully published.
+                    </p>
+
+                    <table class="details-table">
+                        <tr>
+                            <td class="label">Food Item:</td>
+                            <td class="value">${foodName}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Available Quantity:</td>
+                            <td class="value">${quantity} ${unit}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Pickup Venue:</td>
+                            <td class="value">${location}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Pickup Window:</td>
+                            <td class="value">${formattedStart} - ${formattedEnd}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Valid Until:</td>
+                            <td class="value">${formattedExpiry}</td>
+                        </tr>
+                    </table>
+
+                    <p style="font-size: 13px; color: #64748b; margin-top: 24px; line-height: 1.5;">
+                        You will receive an instant email notification as soon as a community member reserves these meals.
+                    </p>
+                </div>
+                <div class="footer">
+                    Sent via SurplusShare • Empowering Zero Food Waste
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    try {
+        const transporter = createTransporter();
+        if (!transporter) {
+            console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated listing email to ${supplierEmail}`);
+            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
+        }
+
+        const info = await transporter.sendMail({
+            from: `"SurplusShare" <${fromEmail}>`,
+            to: supplierEmail,
+            subject,
+            html: htmlContent
+        });
+
+        console.log(`✓ [EMAIL SENT] Listing confirmation sent to donor ${supplierEmail} (ID: ${info.messageId})`);
+        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
+    } catch (error) {
+        console.warn(`⚠️ [EMAIL WARNING] Could not dispatch listing email to donor (${error.message}).`);
+        return { delivered: false, simulated: true, success: true, error: error.message };
+    }
+};
+
+/**
+ * Sends an instant arrival alert to Food Donor when receiver reaches the pickup venue.
+ */
+export const sendArrivalAlertToDonor = async ({
+    supplierEmail,
+    supplierName,
+    receiverName,
+    receiverEmail,
+    foodName,
+    pickupCode,
+    pickupLocation
+}) => {
+    if (!supplierEmail) return { delivered: false, simulated: true, success: false, reason: 'No supplier email' };
+
+    const fromEmail = process.env.EMAIL_USER || process.env.GMAIL_USER || 'notifications@surplusshare.com';
+    const subject = `🔔 Receiver Arrived at Venue: ${receiverName} is here for "${foodName}" (Code #${pickupCode})`;
+
+    const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+                .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+                .header { background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: #ffffff; padding: 28px; text-align: center; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+                .content { padding: 32px; }
+                .badge { display: inline-block; background: #ffe4e6; color: #be123c; padding: 6px 14px; border-radius: 12px; font-weight: 700; font-size: 13px; margin-bottom: 20px; }
+                .code-box { background: #fff1f2; border: 2px dashed #e11d48; border-radius: 16px; padding: 20px; text-align: center; margin: 24px 0; }
+                .code-text { font-family: monospace; font-size: 38px; font-weight: 900; letter-spacing: 6px; color: #be123c; margin: 8px 0; }
+                .footer { text-align: center; padding: 20px; font-size: 12px; color: #94a3b8; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="header">
+                    <h1>Receiver Arrived at Pickup Venue!</h1>
+                    <p style="margin: 6px 0 0; font-size: 14px; opacity: 0.9;">Please verify the handover code to release the food.</p>
+                </div>
+                <div class="content">
+                    <span class="badge">📍 Arrival Notification</span>
+                    <p style="font-size: 16px; line-height: 1.5; margin-top: 0;">
+                        Hello <strong>${supplierName}</strong>,
+                    </p>
+                    <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+                        Community member <strong>${receiverName}</strong> (<a href="mailto:${receiverEmail}">${receiverEmail}</a>) has arrived at <strong>${pickupLocation}</strong> to collect <strong>"${foodName}"</strong>.
+                    </p>
+
+                    <div class="code-box">
+                        <span style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #be123c; letter-spacing: 1px;">Handover Verification Code</span>
+                        <div class="code-text">${pickupCode}</div>
+                        <span style="font-size: 12px; color: #9f1239;">Match this code with ${receiverName} to complete the food handover.</span>
+                    </div>
+
+                    <p style="font-size: 13px; color: #64748b; margin-top: 24px; line-height: 1.5;">
+                        Log in to your SurplusShare dashboard or live tracker to verify and release this food parcel.
+                    </p>
+                </div>
+                <div class="footer">
+                    Sent via SurplusShare • Zero Food Waste Community
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    try {
+        const transporter = createTransporter();
+        if (!transporter) {
+            console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated arrival alert to ${supplierEmail}`);
+            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
+        }
+
+        const info = await transporter.sendMail({
+            from: `"SurplusShare" <${fromEmail}>`,
+            to: supplierEmail,
+            subject,
+            html: htmlContent
+        });
+
+        console.log(`✓ [EMAIL SENT] Arrival alert sent to donor ${supplierEmail} (ID: ${info.messageId})`);
+        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
+    } catch (error) {
+        console.warn(`⚠️ [EMAIL WARNING] Could not dispatch arrival alert to donor (${error.message}).`);
+        return { delivered: false, simulated: true, success: true, error: error.message };
+    }
+};
+
+
