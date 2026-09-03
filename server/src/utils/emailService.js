@@ -42,9 +42,9 @@ export const createTransporter = async () => {
             servername: 'smtp.gmail.com',
             rejectUnauthorized: false
         },
-        connectionTimeout: 4000,
-        greetingTimeout: 4000,
-        socketTimeout: 5000
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
     });
 };
 
@@ -53,144 +53,130 @@ export const createTransporter = async () => {
  * 1. Resend API (HTTPS Port 443 - Recommended for Render Cloud hosts)
  * 2. Brevo API (HTTPS Port 443)
  * 3. Nodemailer SMTP (Port 587)
+ *
+ * Every email is sent individually to:
+ * - The actual intended recipient (donor/receiver)
+ * - The admin (always gets a copy of every notification)
  */
-export const dispatchEmail = async ({ to, subject, html }) => {
-    if (!to) return { delivered: false, simulated: true, success: false, reason: 'No recipient email' };
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '24eg105q04@anurag.edu.in';
 
-    // Admin always gets a copy of every email
-    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '24eg105q04@anurag.edu.in';
-    // Build unique recipient list: actual recipient + admin
-    const allRecipients = [...new Set([to, ADMIN_EMAIL].filter(Boolean))];
+/**
+ * Low-level: send a single email to a single recipient using best available provider.
+ */
+const sendSingleEmail = async ({ to, subject, html }) => {
+    if (!to) return { delivered: false, reason: 'No recipient' };
 
-    let resendDelivered = false;
-
-    // 1. Resend HTTP REST API (Port 443 - 100% open on Render, Vercel, AWS)
+    // 1. Resend HTTP REST API
     const resendApiKey = process.env.RESEND_API_KEY;
     if (resendApiKey) {
         try {
             const fromEmail = process.env.RESEND_FROM || 'SurplusShare <onboarding@resend.dev>';
-
-            // Try sending to ALL recipients (works if domain is verified or recipient is verified)
             const res = await fetch('https://api.resend.com/emails', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${resendApiKey.trim()}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    from: fromEmail,
-                    to: allRecipients,
-                    subject,
-                    html
-                })
+                body: JSON.stringify({ from: fromEmail, to: [to], subject, html })
             });
 
             const data = await res.json();
             if (res.ok && data.id) {
-                console.log(`✓ [EMAIL SENT via Resend HTTPS] to ${allRecipients.join(', ')} (ID: ${data.id})`);
-                resendDelivered = true;
-            } else if (data.message && (data.message.includes('own email address') || data.message.includes('verify a domain'))) {
-                // Resend free sandbox: can only send to verified email (admin)
-                // Send to admin with info about the intended recipient
-                const sandboxHeader = to !== ADMIN_EMAIL
-                    ? `<div style="padding:10px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:14px;border-radius:10px;font-size:12px;color:#334155;"><strong>⚡ SurplusShare Sandbox:</strong> Intended for <code>${to}</code></div>`
-                    : '';
-
-                const forwardRes = await fetch('https://api.resend.com/emails', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${resendApiKey.trim()}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        from: fromEmail,
-                        to: [ADMIN_EMAIL],
-                        subject: to !== ADMIN_EMAIL ? `[For: ${to}] ${subject}` : subject,
-                        html: sandboxHeader + html
-                    })
-                });
-
-                const forwardData = await forwardRes.json();
-                if (forwardRes.ok && forwardData.id) {
-                    console.log(`✓ [EMAIL SENT via Resend Sandbox] to admin ${ADMIN_EMAIL} for intended ${to} (ID: ${forwardData.id})`);
-                    resendDelivered = true;
-                } else {
-                    console.warn(`⚠️ [RESEND SANDBOX WARNING] ${JSON.stringify(forwardData)}`);
-                }
-            } else {
-                console.warn(`⚠️ [RESEND API WARNING] ${JSON.stringify(data)}`);
+                console.log(`✓ [RESEND] Delivered to ${to} (ID: ${data.id})`);
+                return { delivered: true, provider: 'resend', messageId: data.id };
             }
-        } catch (resendErr) {
-            console.warn(`⚠️ [RESEND HTTP ERROR] ${resendErr.message}`);
+            // Resend sandbox restriction — cannot deliver to this address
+            if (data.message && (data.message.includes('own email address') || data.message.includes('verify a domain'))) {
+                console.warn(`⚠️ [RESEND SANDBOX] Cannot deliver to ${to} — trying SMTP fallback`);
+                // Don't return, fall through to SMTP
+            } else {
+                console.warn(`⚠️ [RESEND WARNING] ${to}: ${JSON.stringify(data)}`);
+            }
+        } catch (err) {
+            console.warn(`⚠️ [RESEND ERROR] ${to}: ${err.message}`);
         }
-
-        // If the intended recipient IS the admin, Resend sandbox already delivered — we're done
-        if (resendDelivered && to === ADMIN_EMAIL) {
-            return { delivered: true, simulated: false, success: true, provider: 'resend' };
-        }
-        // Otherwise, fall through to SMTP/Brevo to also deliver to the actual poster/receiver
     }
 
-    // 2. Brevo HTTP REST API (Port 443)
+    // 2. Brevo HTTP REST API
     const brevoApiKey = process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY;
     if (brevoApiKey) {
         try {
             const senderEmail = process.env.EMAIL_USER || 'notifications@surplusshare.com';
-            const brevoRecipients = allRecipients.map(email => ({ email }));
             const res = await fetch('https://api.brevo.com/v3/smtp/email', {
                 method: 'POST',
-                headers: {
-                    'api-key': brevoApiKey.trim(),
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'api-key': brevoApiKey.trim(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sender: { name: 'SurplusShare', email: senderEmail },
-                    to: brevoRecipients,
+                    to: [{ email: to }],
                     subject,
                     htmlContent: html
                 })
             });
-
             const data = await res.json();
             if (res.ok && (data.messageId || data.messageIds)) {
-                console.log(`✓ [EMAIL SENT via Brevo HTTPS] to ${allRecipients.join(', ')} (ID: ${data.messageId})`);
-                return { delivered: true, simulated: false, success: true, messageId: data.messageId, provider: 'brevo' };
+                console.log(`✓ [BREVO] Delivered to ${to} (ID: ${data.messageId})`);
+                return { delivered: true, provider: 'brevo', messageId: data.messageId };
             }
-        } catch (brevoErr) {
-            console.warn(`⚠️ [BREVO HTTP ERROR] ${brevoErr.message}`);
+        } catch (err) {
+            console.warn(`⚠️ [BREVO ERROR] ${to}: ${err.message}`);
         }
     }
 
-    // 3. Nodemailer SMTP (Standard fallback — delivers to ALL recipients including actual poster/receiver)
+    // 3. Gmail SMTP (works for ALL email addresses — this is the main delivery channel for non-admin users)
     try {
         const transporter = await createTransporter();
         if (transporter) {
             const fromEmail = process.env.EMAIL_USER || process.env.GMAIL_USER || 'notifications@surplusshare.com';
             const info = await transporter.sendMail({
                 from: `"SurplusShare" <${fromEmail}>`,
-                to: allRecipients.join(', '),
+                to,
                 subject,
                 html
             });
-
-            console.log(`✓ [EMAIL SENT via SMTP] to ${allRecipients.join(', ')} (ID: ${info.messageId})`);
-            return { delivered: true, simulated: false, success: true, messageId: info.messageId, provider: 'smtp' };
+            console.log(`✓ [SMTP] Delivered to ${to} (ID: ${info.messageId})`);
+            return { delivered: true, provider: 'smtp', messageId: info.messageId };
         }
-    } catch (smtpErr) {
-        console.warn(`⚠️ [SMTP ERROR] (${smtpErr.message}).`);
-        if (resendDelivered) {
-            return { delivered: true, simulated: false, success: true, provider: 'resend-sandbox', note: 'SMTP failed but admin received via Resend' };
-        }
-        return { delivered: false, simulated: true, success: true, error: smtpErr.message };
+    } catch (err) {
+        console.warn(`⚠️ [SMTP ERROR] ${to}: ${err.message}`);
     }
 
-    // If Resend sandbox already delivered to admin, count as partial success
-    if (resendDelivered) {
-        return { delivered: true, simulated: false, success: true, provider: 'resend-sandbox', note: 'Delivered to admin via Resend sandbox' };
+    console.log(`[EMAIL LOG] Could not deliver to ${to} for "${subject}"`);
+    return { delivered: false, reason: 'All providers failed' };
+};
+
+/**
+ * Public dispatcher: sends the email to the intended recipient AND a copy to admin.
+ * Each delivery is independent — admin failure doesn't block recipient, and vice versa.
+ */
+export const dispatchEmail = async ({ to, subject, html }) => {
+    if (!to) return { delivered: false, simulated: true, success: false, reason: 'No recipient email' };
+
+    const results = {};
+
+    // 1. Send to the actual intended recipient (donor or receiver)
+    console.log(`📧 [DISPATCH] Sending to intended recipient: ${to}`);
+    results.recipient = await sendSingleEmail({ to, subject, html });
+
+    // 2. Send a copy to admin (if not the same as recipient)
+    if (to !== ADMIN_EMAIL) {
+        console.log(`📧 [DISPATCH] Sending admin copy to: ${ADMIN_EMAIL}`);
+        const adminSubject = `[Copy: ${to}] ${subject}`;
+        const adminHtml = `<div style="padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;margin-bottom:14px;border-radius:10px;font-size:12px;color:#166534;"><strong>📋 Admin Copy:</strong> This email was sent to <code>${to}</code></div>` + html;
+        results.admin = await sendSingleEmail({ to: ADMIN_EMAIL, subject: adminSubject, html: adminHtml });
+    } else {
+        results.admin = results.recipient; // recipient IS admin
     }
 
-    console.log(`[EMAIL LOG] Simulated email to ${allRecipients.join(', ')} for "${subject}"`);
-    return { delivered: false, simulated: true, success: true, reason: 'No active SMTP/API credentials' };
+    const anyDelivered = results.recipient?.delivered || results.admin?.delivered;
+
+    return {
+        delivered: anyDelivered,
+        simulated: !anyDelivered,
+        success: true,
+        recipientResult: results.recipient,
+        adminResult: results.admin,
+        provider: results.recipient?.provider || results.admin?.provider || 'none'
+    };
 };
 
 /**
