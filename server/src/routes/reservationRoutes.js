@@ -3,6 +3,7 @@ import {
     createReservation, 
     getMyReservations, 
     getSupplierReservations, 
+    getReservationByCode,
     notifyArrival, 
     notifyDonorByEmail,
     verifyPickupCode, 
@@ -15,6 +16,7 @@ const router = express.Router();
 
 router.get('/my', authenticate, getMyReservations);
 router.get('/supplier', authenticate, requireSupplier, getSupplierReservations);
+router.get('/track/:code', authenticate, getReservationByCode);
 router.post('/', authenticate, createReservation);
 router.post('/notify-arrival', authenticate, notifyArrival);
 router.post('/notify-donor-email', authenticate, notifyDonorByEmail);

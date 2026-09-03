@@ -167,3 +167,131 @@ export const sendPickupAlertToDonor = async ({
         return { delivered: false, simulated: true, success: true, error: error.message };
     }
 };
+
+/**
+ * Sends a detailed pickup pass and confirmation email to the Food Receiver
+ * with the 6-digit verification code, venue location, and donor contact details.
+ */
+export const sendPickupPassToReceiver = async ({
+    receiverEmail,
+    receiverName,
+    supplierName,
+    supplierEmail,
+    foodName,
+    quantity,
+    unit,
+    pickupCode,
+    pickupLocation,
+    pickupStart,
+    pickupEnd
+}) => {
+    if (!receiverEmail) return { delivered: false, simulated: true, success: false, reason: 'No receiver email' };
+
+    const fromEmail = process.env.EMAIL_USER || process.env.GMAIL_USER || 'notifications@surplusshare.com';
+    const formattedStart = pickupStart ? new Date(pickupStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const formattedEnd = pickupEnd ? new Date(pickupEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const subject = `🎫 Your SurplusShare Pickup Pass: "${foodName}" (Code #${pickupCode})`;
+
+    const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+                .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+                .header { background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #ffffff; padding: 28px; text-align: center; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+                .content { padding: 32px; }
+                .badge { display: inline-block; background: #e0f2fe; color: #0369a1; padding: 6px 14px; border-radius: 12px; font-weight: 700; font-size: 13px; margin-bottom: 20px; }
+                .code-box { background: #f0fdf4; border: 2px dashed #059669; border-radius: 16px; padding: 20px; text-align: center; margin: 24px 0; }
+                .code-text { font-family: monospace; font-size: 38px; font-weight: 900; letter-spacing: 6px; color: #047857; margin: 8px 0; }
+                .details-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+                .details-table td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+                .details-table td.label { color: #64748b; font-weight: 600; width: 40%; }
+                .details-table td.value { color: #0f172a; font-weight: 700; }
+                .donor-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-top: 16px; }
+                .footer { text-align: center; padding: 20px; font-size: 12px; color: #94a3b8; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="header">
+                    <h1>SurplusShare Pickup Pass</h1>
+                    <p style="margin: 6px 0 0; font-size: 14px; opacity: 0.9;">Your food reservation is confirmed & ready for pickup!</p>
+                </div>
+                <div class="content">
+                    <span class="badge">🎒 Active Reservation Pass</span>
+                    <p style="font-size: 16px; line-height: 1.5; margin-top: 0;">
+                        Hello <strong>${receiverName}</strong>,
+                    </p>
+                    <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+                        Your reservation for <strong>"${foodName}"</strong> has been confirmed. Please show your 6-digit pickup code upon arrival at the venue.
+                    </p>
+
+                    <div class="code-box">
+                        <span style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #047857; letter-spacing: 1px;">Your 6-Digit Pickup Code</span>
+                        <div class="code-text">${pickupCode}</div>
+                        <span style="font-size: 12px; color: #065f46;">Show this code to donor ${supplierName} at handover.</span>
+                    </div>
+
+                    <div class="donor-box">
+                        <span style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #64748b; letter-spacing: 0.5px;">Food Donor / Venue Contact</span>
+                        <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 4px;">${supplierName}</div>
+                        <div style="font-size: 13px; color: #0284c7; margin-top: 2px;">
+                            <a href="mailto:${supplierEmail}" style="color: #0284c7; text-decoration: none;">${supplierEmail}</a>
+                        </div>
+                    </div>
+
+                    <table class="details-table">
+                        <tr>
+                            <td class="label">Food Item:</td>
+                            <td class="value">${foodName}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Quantity:</td>
+                            <td class="value">${quantity} ${unit}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Pickup Window:</td>
+                            <td class="value">${formattedStart} - ${formattedEnd}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Pickup Location:</td>
+                            <td class="value">${pickupLocation}</td>
+                        </tr>
+                    </table>
+
+                    <p style="font-size: 13px; color: #64748b; margin-top: 24px; line-height: 1.5;">
+                        Track your route live or view real-time status on your SurplusShare dashboard. Thank you for rescuing surplus food!
+                    </p>
+                </div>
+                <div class="footer">
+                    Sent via SurplusShare • Zero Food Waste Community
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    try {
+        const transporter = createTransporter();
+        if (!transporter) {
+            console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated email to receiver ${receiverEmail} with code ${pickupCode}`);
+            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
+        }
+
+        const info = await transporter.sendMail({
+            from: `"SurplusShare" <${fromEmail}>`,
+            to: receiverEmail,
+            subject,
+            html: htmlContent
+        });
+
+        console.log(`✓ [EMAIL SENT] Pickup confirmation pass sent to receiver ${receiverEmail} (ID: ${info.messageId})`);
+        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
+    } catch (error) {
+        console.warn(`⚠️ [EMAIL WARNING] Could not dispatch to receiver (${error.message}). Logged to console.`);
+        return { delivered: false, simulated: true, success: true, error: error.message };
+    }
+};
+

@@ -1,7 +1,7 @@
 import Reservation from '../models/Reservation.js';
 import FoodListing from '../models/FoodListing.js';
 import User from '../models/User.js';
-import { sendPickupAlertToDonor } from '../utils/emailService.js';
+import { sendPickupAlertToDonor, sendPickupPassToReceiver } from '../utils/emailService.js';
 
 const generatePickupCode = () => {
     return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit code
@@ -76,14 +76,17 @@ export const createReservation = async (req, res) => {
 
         await reservation.save();
 
-        // Asynchronously dispatch email notification to the Food Poster (Donor)
+        // Asynchronously dispatch email notifications to both Food Donor & Food Receiver
         const receiver = await User.findById(req.user.id);
-        if (listing.supplier && receiver && listing.supplier.email) {
+        const supplierEmail = listing.supplier?.email;
+        const receiverEmail = receiver?.email;
+
+        if (supplierEmail) {
             sendPickupAlertToDonor({
-                supplierEmail: listing.supplier.email,
-                supplierName: listing.supplier.name || 'Food Donor',
-                receiverName: receiver.name || 'Community Member',
-                receiverEmail: receiver.email,
+                supplierEmail,
+                supplierName: listing.supplier?.name || 'Food Donor',
+                receiverName: receiver?.name || 'Community Member',
+                receiverEmail: receiverEmail || 'receiver@surplusshare.com',
                 foodName: listing.foodName,
                 quantity,
                 unit: listing.unit,
@@ -92,6 +95,22 @@ export const createReservation = async (req, res) => {
                 pickupStart: listing.pickupStart,
                 pickupEnd: listing.pickupEnd
             }).catch(e => console.error('Donor email dispatch error:', e));
+        }
+
+        if (receiverEmail) {
+            sendPickupPassToReceiver({
+                receiverEmail,
+                receiverName: receiver?.name || 'Community Member',
+                supplierName: listing.supplier?.name || 'Food Donor',
+                supplierEmail: supplierEmail || 'donor@surplusshare.com',
+                foodName: listing.foodName,
+                quantity,
+                unit: listing.unit,
+                pickupCode,
+                pickupLocation: listing.location,
+                pickupStart: listing.pickupStart,
+                pickupEnd: listing.pickupEnd
+            }).catch(e => console.error('Receiver email dispatch error:', e));
         }
 
         res.status(201).json(reservation);
@@ -137,6 +156,37 @@ export const getSupplierReservations = async (req, res) => {
     }
 };
 
+// Get reservation by pickupCode for live tracking by either receiver or supplier
+export const getReservationByCode = async (req, res) => {
+    try {
+        await autoExpireItems();
+        const { code } = req.params;
+
+        const reservation = await Reservation.findOne({ pickupCode: code })
+            .populate({
+                path: 'foodListing',
+                populate: { path: 'supplier', select: 'name email location profileImage coordinates' }
+            })
+            .populate('receiver', 'name email mealsRescued profileImage');
+
+        if (!reservation) {
+            return res.status(404).json({ message: 'Reservation not found' });
+        }
+
+        // Verify that the user is either the receiver, the supplier, or an admin
+        const isReceiver = String(reservation.receiver?._id) === String(req.user.id);
+        const isSupplier = String(reservation.foodListing?.supplier?._id) === String(req.user.id);
+
+        if (!isReceiver && !isSupplier && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Unauthorized to view tracking for this reservation' });
+        }
+
+        res.json(reservation);
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching reservation tracking details', error: err.message });
+    }
+};
+
 // Receiver notifies donor that they have arrived at the pickup location
 export const notifyArrival = async (req, res) => {
     try {
@@ -168,7 +218,7 @@ export const notifyArrival = async (req, res) => {
     }
 };
 
-// Receiver manually triggers sending/resending verification code email to the food donor / poster
+// Receiver manually triggers sending/resending verification code email to the food donor / poster & receiver
 export const notifyDonorByEmail = async (req, res) => {
     try {
         const { pickupCode, reservationId, customDonorEmail } = req.body;
@@ -186,45 +236,75 @@ export const notifyDonorByEmail = async (req, res) => {
         }
 
         const targetDonorEmail = customDonorEmail || reservation.foodListing?.supplier?.email;
-        if (!targetDonorEmail) {
-            return res.status(400).json({ message: 'Food donor email address not found.' });
-        }
-
         const supplierName = reservation.foodListing?.supplier?.name || 'Food Donor';
         const receiverName = reservation.receiver?.name || req.user?.name || 'Community Member';
         const receiverEmail = reservation.receiver?.email || req.user?.email;
         const foodName = reservation.foodListing?.foodName || 'Surplus Food';
 
-        const emailResult = await sendPickupAlertToDonor({
-            supplierEmail: targetDonorEmail,
-            supplierName,
-            receiverName,
-            receiverEmail,
-            foodName,
-            quantity: reservation.quantity,
-            unit: reservation.foodListing?.unit || 'portions',
-            pickupCode: reservation.pickupCode,
-            pickupLocation: reservation.foodListing?.location || 'Designated Venue',
-            pickupStart: reservation.foodListing?.pickupStart,
-            pickupEnd: reservation.foodListing?.pickupEnd
-        });
+        const emailPromises = [];
 
-        const isRealDelivered = emailResult?.delivered === true;
+        // 1. Send donor notification alert
+        if (targetDonorEmail) {
+            emailPromises.push(
+                sendPickupAlertToDonor({
+                    supplierEmail: targetDonorEmail,
+                    supplierName,
+                    receiverName,
+                    receiverEmail: receiverEmail || 'receiver@surplusshare.com',
+                    foodName,
+                    quantity: reservation.quantity,
+                    unit: reservation.foodListing?.unit || 'portions',
+                    pickupCode: reservation.pickupCode,
+                    pickupLocation: reservation.foodListing?.location || 'Designated Venue',
+                    pickupStart: reservation.foodListing?.pickupStart,
+                    pickupEnd: reservation.foodListing?.pickupEnd
+                })
+            );
+        }
+
+        // 2. Also send confirmation pass to receiver's inbox
+        if (receiverEmail) {
+            emailPromises.push(
+                sendPickupPassToReceiver({
+                    receiverEmail,
+                    receiverName,
+                    supplierName,
+                    supplierEmail: targetDonorEmail || 'donor@surplusshare.com',
+                    foodName,
+                    quantity: reservation.quantity,
+                    unit: reservation.foodListing?.unit || 'portions',
+                    pickupCode: reservation.pickupCode,
+                    pickupLocation: reservation.foodListing?.location || 'Designated Venue',
+                    pickupStart: reservation.foodListing?.pickupStart,
+                    pickupEnd: reservation.foodListing?.pickupEnd
+                })
+            );
+        }
+
+        const results = await Promise.all(emailPromises);
+        const donorResult = results[0];
+        const receiverResult = results[1] || donorResult;
+
+        const isRealDelivered = (donorResult?.delivered === true) || (receiverResult?.delivered === true);
+
+        const recipientsText = [targetDonorEmail, receiverEmail].filter(Boolean).join(' and ');
 
         res.json({
             success: true,
             delivered: isRealDelivered,
             simulated: !isRealDelivered,
             targetDonorEmail,
+            receiverEmail,
             message: isRealDelivered 
-                ? `🎉 Verification code & pickup alert delivered to food poster (${targetDonorEmail})!`
-                : `ℹ️ Pickup pass alert logged for donor (${targetDonorEmail}).`,
+                ? `🎉 Verification code & pickup pass delivered to ${recipientsText}!`
+                : `ℹ️ Pickup pass alert recorded for ${recipientsText}.`,
             pickupCode: reservation.pickupCode,
-            emailResult
+            donorResult,
+            receiverResult
         });
     } catch (err) {
-        console.error('Error notifying donor by email:', err);
-        res.status(500).json({ message: 'Failed to send email to food donor', error: err.message });
+        console.error('Error notifying by email:', err);
+        res.status(500).json({ message: 'Failed to send email to food donor/receiver', error: err.message });
     }
 };
 

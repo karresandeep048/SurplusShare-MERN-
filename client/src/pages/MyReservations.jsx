@@ -341,28 +341,39 @@ const MyReservations = () => {
                                     {/* Right: Actions */}
                                     <div className="w-full lg:w-auto shrink-0 flex flex-col items-start lg:items-end justify-center pt-4 lg:pt-0 border-t lg:border-t-0 border-slate-100">
                                         
-                                        {/* SUPPLIER: Input Code */}
+                                        {/* SUPPLIER: Input Code & Live Tracking */}
                                         {isSupplier ? (
                                             res.status === 'RESERVED' ? (
-                                                <div className="w-full sm:w-auto bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center gap-2">
-                                                    <div>
-                                                        <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Enter Picker Code:</span>
-                                                        <input
-                                                            type="text"
-                                                            maxLength={6}
-                                                            placeholder="6-digit code"
-                                                            className="w-32 px-3 py-2 text-center text-sm font-black font-mono tracking-widest border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 bg-white outline-none"
-                                                            value={verifyInputMap[res._id] || ''}
-                                                            onChange={(e) => setVerifyInputMap({ ...verifyInputMap, [res._id]: e.target.value.replace(/\D/g, '') })}
-                                                        />
-                                                    </div>
-                                                    <button
-                                                        onClick={() => handleVerifyItem(res._id)}
-                                                        disabled={verifyingId === res._id}
-                                                        className="w-full sm:w-auto mt-2 sm:mt-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md"
+                                                <div className="w-full sm:w-auto flex flex-col sm:flex-row items-center gap-2">
+                                                    <Link
+                                                        to={`/track-order/${res.pickupCode}`}
+                                                        className="w-full sm:w-auto bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 text-xs font-bold px-3.5 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+                                                        title="Live Receiver Tracking"
                                                     >
-                                                        {verifyingId === res._id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirm Handover'}
-                                                    </button>
+                                                        <Navigation className="w-3.5 h-3.5" />
+                                                        <span>Track Receiver</span>
+                                                    </Link>
+
+                                                    <div className="w-full sm:w-auto bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center gap-2">
+                                                        <div>
+                                                            <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Enter Picker Code:</span>
+                                                            <input
+                                                                type="text"
+                                                                maxLength={6}
+                                                                placeholder="6-digit code"
+                                                                className="w-32 px-3 py-2 text-center text-sm font-black font-mono tracking-widest border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 bg-white outline-none"
+                                                                value={verifyInputMap[res._id] || ''}
+                                                                onChange={(e) => setVerifyInputMap({ ...verifyInputMap, [res._id]: e.target.value.replace(/\D/g, '') })}
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleVerifyItem(res._id)}
+                                                            disabled={verifyingId === res._id}
+                                                            className="w-full sm:w-auto mt-2 sm:mt-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md"
+                                                        >
+                                                            {verifyingId === res._id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirm Handover'}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <span className="text-xs font-bold text-slate-500">{res.status}</span>

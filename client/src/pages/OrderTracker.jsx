@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { AuthContext } from '../context/AuthContext';
 import { 
     ArrowLeft, 
     CheckCircle2, 
@@ -13,12 +14,14 @@ import {
     Copy, 
     Check, 
     Clock, 
-    Loader2,
-    QrCode,
-    X,
-    Mail,
-    Send,
-    AlertCircle
+    Loader2, 
+    QrCode, 
+    X, 
+    Mail, 
+    Send, 
+    AlertCircle,
+    User,
+    KeyRound
 } from 'lucide-react';
 
 // Custom icons
@@ -49,6 +52,9 @@ const PickupIcon = L.divIcon({
 
 const OrderTracker = () => {
     const { code } = useParams();
+    const { user } = useContext(AuthContext);
+    const isSupplier = user?.role?.toLowerCase() === 'supplier';
+
     const [progress, setProgress] = useState(0.2); // 0 to 1
     const [arrived, setArrived] = useState(false);
     const [donorNotified, setDonorNotified] = useState(false);
@@ -58,40 +64,54 @@ const OrderTracker = () => {
     const [reservationData, setReservationData] = useState(null);
     const [loadingRes, setLoadingRes] = useState(true);
 
-    // Donor Email Notification States
+    // Supplier Verification Terminal States
+    const [supplierCodeInput, setSupplierCodeInput] = useState('');
+    const [verifyingHandover, setVerifyingHandover] = useState(false);
+    const [handoverSuccessMsg, setHandoverSuccessMsg] = useState(null);
+    const [handoverErrorMsg, setHandoverErrorMsg] = useState(null);
+    const [isCollected, setIsCollected] = useState(false);
+
+    // Donor Email Notification States (for receiver)
     const [donorEmailSending, setDonorEmailSending] = useState(false);
     const [donorEmailSuccess, setDonorEmailSuccess] = useState(null);
     const [donorEmailError, setDonorEmailError] = useState(null);
 
-    const [startLoc, setStartLoc] = useState([12.9279, 77.5871]); // User simulated starting location
+    const [startLoc, setStartLoc] = useState([12.9279, 77.5871]); // Starting location
     const [endLoc, setEndLoc] = useState([12.9352, 77.6245]); // Food venue location
 
-    useEffect(() => {
-        const fetchReservation = async () => {
-            try {
-                const { data } = await axios.get('/api/reservations/my');
-                const match = data.find(r => r.pickupCode === code);
-                if (match) {
-                    setReservationData(match);
-                    if (match.pickerArrived) {
-                        setArrived(true);
-                        setDonorNotified(true);
-                        setProgress(1);
-                    }
-                    if (match.foodListing?.coordinates?.lat && match.foodListing?.coordinates?.lng) {
-                        setEndLoc([match.foodListing.coordinates.lat, match.foodListing.coordinates.lng]);
-                    }
+    const fetchReservation = async () => {
+        try {
+            const { data } = await axios.get(`/api/reservations/track/${code}`);
+            if (data) {
+                setReservationData(data);
+                if (data.status === 'COLLECTED') {
+                    setIsCollected(true);
+                    setArrived(true);
+                    setProgress(1);
                 }
-            } catch (err) {
-                console.error('Error fetching reservation in tracker:', err);
-            } finally {
-                setLoadingRes(false);
+                if (data.pickerArrived) {
+                    setArrived(true);
+                    setDonorNotified(true);
+                    setProgress(1);
+                }
+                if (data.foodListing?.coordinates?.lat && data.foodListing?.coordinates?.lng) {
+                    setEndLoc([data.foodListing.coordinates.lat, data.foodListing.coordinates.lng]);
+                }
             }
-        };
+        } catch (err) {
+            console.error('Error fetching reservation in tracker:', err);
+        } finally {
+            setLoadingRes(false);
+        }
+    };
+
+    useEffect(() => {
         fetchReservation();
+        const interval = setInterval(fetchReservation, 8000);
+        return () => clearInterval(interval);
     }, [code]);
 
-    // Send arrival alert to food donor
+    // Receiver: Send arrival alert to food donor
     const handleNotifyArrival = async () => {
         setNotifying(true);
         try {
@@ -106,7 +126,7 @@ const OrderTracker = () => {
         }
     };
 
-    // Send pickup verification code email directly to food donor/poster
+    // Receiver: Send pickup verification code email directly to food donor/poster
     const handleSendEmailToDonor = async () => {
         setDonorEmailSending(true);
         setDonorEmailSuccess(null);
@@ -122,6 +142,34 @@ const OrderTracker = () => {
             setDonorEmailError(err.response?.data?.message || 'Failed to email food donor. Please try again.');
         } finally {
             setDonorEmailSending(false);
+        }
+    };
+
+    // Supplier: Verify 6-digit code and complete handover directly from the tracking view
+    const handleSupplierVerifyCode = async (e) => {
+        if (e) e.preventDefault();
+        const inputCode = supplierCodeInput.trim() || code;
+        setHandoverErrorMsg(null);
+        setHandoverSuccessMsg(null);
+
+        if (!inputCode || inputCode.length !== 6) {
+            setHandoverErrorMsg('Please enter the 6-digit code provided by the receiver.');
+            return;
+        }
+
+        setVerifyingHandover(true);
+        try {
+            const { data } = await axios.post('/api/reservations/verify-code', {
+                pickupCode: inputCode
+            });
+
+            setHandoverSuccessMsg(data.message || '🎉 Handover confirmed! Food successfully rescued.');
+            setIsCollected(true);
+            fetchReservation();
+        } catch (err) {
+            setHandoverErrorMsg(err.response?.data?.message || 'Verification failed. Code does not match.');
+        } finally {
+            setVerifyingHandover(false);
         }
     };
 
@@ -146,12 +194,14 @@ const OrderTracker = () => {
             if (newProgress >= 1) {
                 setArrived(true);
                 clearInterval(timer);
-                handleNotifyArrival();
+                if (!isSupplier) {
+                    handleNotifyArrival();
+                }
             }
         }, interval);
 
         return () => clearInterval(timer);
-    }, [arrived]);
+    }, [arrived, isSupplier]);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(code);
@@ -164,7 +214,7 @@ const OrderTracker = () => {
     return (
         <div className="h-[calc(100vh-64px)] flex flex-col md:flex-row overflow-hidden bg-slate-50 relative">
 
-            {/* Left Column: Tracking Progression & Pickup Code */}
+            {/* Left Column: Tracking Progression & Pickup Code / Handover Terminal */}
             <div className="w-full md:w-5/12 lg:w-4/12 h-full bg-white shadow-2xl z-20 flex flex-col justify-between overflow-y-auto border-r border-slate-200/80">
                 <div>
                     {/* Header */}
@@ -173,17 +223,21 @@ const OrderTracker = () => {
                             to="/my-reservations" 
                             className="inline-flex items-center text-xs font-bold text-slate-500 hover:text-brand-600 mb-3 transition-colors"
                         >
-                            <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to My Reservations
+                            <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to {isSupplier ? 'Incoming Reservations' : 'My Reservations'}
                         </Link>
                         
                         <div className="flex items-center justify-between mb-1">
-                            <h2 className="text-2xl font-black text-slate-900">Live Pickup Pass</h2>
+                            <h2 className="text-2xl font-black text-slate-900">
+                                {isSupplier ? 'Live Receiver Tracker' : 'Live Pickup Pass'}
+                            </h2>
                             <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${
-                                arrived 
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                                    : 'bg-blue-50 text-blue-800 border-blue-200 animate-pulse'
+                                isCollected
+                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    : arrived 
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200 animate-pulse' 
+                                        : 'bg-blue-50 text-blue-800 border-blue-200'
                             }`}>
-                                {arrived ? 'ARRIVED' : 'EN ROUTE'}
+                                {isCollected ? 'HANDOVER COMPLETE' : arrived ? (isSupplier ? 'RECEIVER ARRIVED' : 'ARRIVED') : 'EN ROUTE'}
                             </span>
                         </div>
 
@@ -196,120 +250,224 @@ const OrderTracker = () => {
 
                     <div className="p-6 space-y-5">
 
-                        {/* 6-Digit Code Card */}
-                        <div className="bg-gradient-to-br from-brand-50 via-emerald-50 to-teal-50 border-2 border-brand-200 rounded-3xl p-6 text-center shadow-sm">
-                            <span className="text-[10px] font-black text-brand-800 uppercase tracking-widest block mb-1">
-                                Your 6-Digit Pickup Confirmation Code
-                            </span>
-                            
-                            <div className="flex items-center justify-center gap-3 my-3">
-                                <span className="text-4xl font-black text-slate-900 tracking-widest font-mono">
-                                    {code}
-                                </span>
-                                <button
-                                    onClick={handleCopy}
-                                    className="p-2.5 bg-white hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl transition-all shadow-sm"
-                                    title="Copy Code"
-                                >
-                                    {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                                </button>
-                                <button
-                                    onClick={() => setShowQr(!showQr)}
-                                    className="p-2.5 bg-white hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl transition-all shadow-sm"
-                                    title="Display QR"
-                                >
-                                    <QrCode className="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            <p className="text-xs text-brand-800 font-medium">
-                                Show this code to the donor at the pickup venue to verify and release the surplus food.
-                            </p>
-                        </div>
-
-                        {/* Email Verification Pass to Food Poster Card */}
-                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl shrink-0">
-                                        <Mail className="w-4 h-4" />
+                        {/* SUPPLIER VIEW: Receiver Details & Handover Verification */}
+                        {isSupplier ? (
+                            <div className="space-y-5">
+                                {/* Receiver Info Card */}
+                                <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+                                        Receiver Profile
+                                    </span>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 bg-brand-100 text-brand-700 rounded-2xl flex items-center justify-center font-black text-lg shrink-0">
+                                            {reservationData?.receiver?.name?.charAt(0) || <User className="w-6 h-6" />}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h3 className="text-base font-black text-slate-900 truncate">
+                                                {reservationData?.receiver?.name || 'Community Member'}
+                                            </h3>
+                                            <p className="text-xs text-slate-500 font-medium truncate">
+                                                {reservationData?.receiver?.email || 'Receiver Email'}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h4 className="text-xs font-bold text-slate-900">Email Verification Pass to Food Poster</h4>
-                                        <p className="text-[11px] text-slate-500">
-                                            Donor: <span className="font-semibold text-slate-700">{reservationData?.foodListing?.supplier?.name || 'Food Donor'}</span> ({reservationData?.foodListing?.supplier?.email || 'Donor Email'})
+                                    
+                                    <div className="mt-3 pt-3 border-t border-slate-200/60 flex items-center justify-between text-xs">
+                                        <span className="text-slate-500 font-medium">Portions Reserved:</span>
+                                        <span className="font-bold text-brand-700">{reservationData?.quantity} {reservationData?.foodListing?.unit || 'items'}</span>
+                                    </div>
+                                </div>
+
+                                {/* Live Arrival Notice Banner */}
+                                {isCollected ? (
+                                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3 animate-fade-in">
+                                        <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+                                        <div>
+                                            <h4 className="text-xs font-black text-emerald-900 uppercase">Collection Verified!</h4>
+                                            <p className="text-xs text-emerald-800 font-medium mt-0.5">
+                                                Food handover has been officially completed and recorded.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : arrived ? (
+                                    <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-5 text-center animate-fade-in">
+                                        <div className="w-10 h-10 bg-amber-100 text-amber-800 rounded-2xl flex items-center justify-center mx-auto mb-2 animate-bounce">
+                                            <Bell className="w-5 h-5" />
+                                        </div>
+                                        <h3 className="text-sm font-black text-amber-950 uppercase tracking-wide">
+                                            Receiver Is At Your Location!
+                                        </h3>
+                                        <p className="text-xs text-amber-800 font-medium mt-1 mb-4">
+                                            Ask {reservationData?.receiver?.name || 'the receiver'} for their 6-digit confirmation code.
                                         </p>
+
+                                        {/* Handover Code Form */}
+                                        <form onSubmit={handleSupplierVerifyCode} className="space-y-3">
+                                            <input
+                                                type="text"
+                                                maxLength={6}
+                                                placeholder="Enter 6-digit code"
+                                                className="w-full text-center text-xl font-black font-mono tracking-widest border border-amber-300 rounded-2xl py-2.5 bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                                                value={supplierCodeInput}
+                                                onChange={(e) => setSupplierCodeInput(e.target.value.replace(/\D/g, ''))}
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={verifyingHandover}
+                                                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-3 rounded-xl shadow-md transition flex items-center justify-center gap-1.5"
+                                            >
+                                                {verifyingHandover ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                                                <span>Confirm Handover & Release Food</span>
+                                            </button>
+                                        </form>
                                     </div>
-                                </div>
-                            </div>
+                                ) : (
+                                    <div className="flex items-center justify-between p-4 bg-blue-50/80 rounded-2xl border border-blue-100">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
+                                                <Clock className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-base font-black text-blue-950">~{minsLeft} mins away</h4>
+                                                <p className="text-xs text-blue-700 font-medium">Receiver approaching your venue</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
-                            {donorEmailSuccess && (
-                                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-start gap-2 animate-fade-in">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                                    <span>{donorEmailSuccess}</span>
-                                </div>
-                            )}
-
-                            {donorEmailError && (
-                                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold flex items-start gap-2 animate-fade-in">
-                                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                                    <span>{donorEmailError}</span>
-                                </div>
-                            )}
-
-                            <button
-                                onClick={handleSendEmailToDonor}
-                                disabled={donorEmailSending}
-                                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
-                            >
-                                {donorEmailSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                                <span>Send Verification Code & Pass to Donor</span>
-                            </button>
-                        </div>
-
-                        {/* Arrival Alert Status Banner */}
-                        {donorNotified ? (
-                            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3 animate-fade-in">
-                                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl shrink-0">
-                                    <Bell className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <h4 className="text-xs font-black text-emerald-900 uppercase">Food Donor Notified!</h4>
-                                    <p className="text-xs text-emerald-800 font-medium mt-0.5">
-                                        The venue has received notification of your arrival. Present code <span className="font-bold">{code}</span>.
-                                    </p>
-                                </div>
-                            </div>
-                        ) : arrived ? (
-                            <div className="text-center py-4 bg-brand-50 rounded-2xl border border-brand-100 p-4">
-                                <CheckCircle2 className="w-8 h-8 text-brand-600 mx-auto mb-2" />
-                                <h3 className="text-base font-black text-slate-900 mb-1">Arrived at Venue</h3>
-                                <button
-                                    onClick={handleNotifyArrival}
-                                    disabled={notifying}
-                                    className="mt-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all inline-flex items-center gap-1.5"
-                                >
-                                    {notifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
-                                    <span>Send Arrival Alert to Donor</span>
-                                </button>
+                                {/* Feedback alerts */}
+                                {handoverSuccessMsg && (
+                                    <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2 animate-fade-in">
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                        <span>{handoverSuccessMsg}</span>
+                                    </div>
+                                )}
+                                {handoverErrorMsg && (
+                                    <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center gap-2 animate-fade-in">
+                                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                                        <span>{handoverErrorMsg}</span>
+                                    </div>
+                                )}
                             </div>
                         ) : (
-                            <div className="flex items-center justify-between p-4 bg-blue-50/70 rounded-2xl border border-blue-100">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
-                                        <Clock className="w-5 h-5" />
+                            /* RECEIVER VIEW: 6-Digit Code, Email Pass to Donor, Arrival Status */
+                            <div className="space-y-5">
+                                {/* 6-Digit Code Card */}
+                                <div className="bg-gradient-to-br from-brand-50 via-emerald-50 to-teal-50 border-2 border-brand-200 rounded-3xl p-6 text-center shadow-sm">
+                                    <span className="text-[10px] font-black text-brand-800 uppercase tracking-widest block mb-1">
+                                        Your 6-Digit Pickup Confirmation Code
+                                    </span>
+                                    
+                                    <div className="flex items-center justify-center gap-3 my-3">
+                                        <span className="text-4xl font-black text-slate-900 tracking-widest font-mono">
+                                            {code}
+                                        </span>
+                                        <button
+                                            onClick={handleCopy}
+                                            className="p-2.5 bg-white hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl transition-all shadow-sm"
+                                            title="Copy Code"
+                                        >
+                                            {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                                        </button>
+                                        <button
+                                            onClick={() => setShowQr(!showQr)}
+                                            className="p-2.5 bg-white hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl transition-all shadow-sm"
+                                            title="Display QR"
+                                        >
+                                            <QrCode className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                    <div>
-                                        <h4 className="text-lg font-black text-blue-950">~{minsLeft} mins</h4>
-                                        <p className="text-xs text-blue-700 font-medium">Estimated arrival</p>
-                                    </div>
+
+                                    <p className="text-xs text-brand-800 font-medium">
+                                        Show this code to the donor at the pickup venue to verify and release the surplus food.
+                                    </p>
                                 </div>
-                                <button
-                                    onClick={handleNotifyArrival}
-                                    className="text-xs font-bold text-brand-700 bg-white hover:bg-brand-50 border border-brand-200 px-3 py-2 rounded-xl shadow-sm transition-all"
-                                >
-                                    I'm Here Now
-                                </button>
+
+                                {/* Email Verification Pass to Food Poster Card */}
+                                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl shrink-0">
+                                                <Mail className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-xs font-bold text-slate-900">Email Verification Pass to Food Poster</h4>
+                                                <p className="text-[11px] text-slate-500">
+                                                    Donor: <span className="font-semibold text-slate-700">{reservationData?.foodListing?.supplier?.name || 'Food Donor'}</span> ({reservationData?.foodListing?.supplier?.email || 'Donor Email'})
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {donorEmailSuccess && (
+                                        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-start gap-2 animate-fade-in">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                            <span>{donorEmailSuccess}</span>
+                                        </div>
+                                    )}
+
+                                    {donorEmailError && (
+                                        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold flex items-start gap-2 animate-fade-in">
+                                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                                            <span>{donorEmailError}</span>
+                                        </div>
+                                    )}
+
+                                    <button
+                                        onClick={handleSendEmailToDonor}
+                                        disabled={donorEmailSending}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+                                    >
+                                        {donorEmailSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                        <span>Send Verification Code & Pass to Donor</span>
+                                    </button>
+                                </div>
+
+                                {/* Arrival Alert Status Banner */}
+                                {donorNotified ? (
+                                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3 animate-fade-in">
+                                        <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl shrink-0">
+                                            <Bell className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-black text-emerald-900 uppercase">Food Donor Notified!</h4>
+                                            <p className="text-xs text-emerald-800 font-medium mt-0.5">
+                                                The venue has received notification of your arrival. Present code <span className="font-bold">{code}</span>.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : arrived ? (
+                                    <div className="text-center py-4 bg-brand-50 rounded-2xl border border-brand-100 p-4">
+                                        <CheckCircle2 className="w-8 h-8 text-brand-600 mx-auto mb-2" />
+                                        <h3 className="text-base font-black text-slate-900 mb-1">Arrived at Venue</h3>
+                                        <button
+                                            onClick={handleNotifyArrival}
+                                            disabled={notifying}
+                                            className="mt-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all inline-flex items-center gap-1.5"
+                                        >
+                                            {notifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+                                            <span>Send Arrival Alert to Donor</span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-between p-4 bg-blue-50/70 rounded-2xl border border-blue-100">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
+                                                <Clock className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-lg font-black text-blue-950">~{minsLeft} mins</h4>
+                                                <p className="text-xs text-blue-700 font-medium">Estimated arrival</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleNotifyArrival}
+                                            className="text-xs font-bold text-brand-700 bg-white hover:bg-brand-50 border border-brand-200 px-3 py-2 rounded-xl shadow-sm transition-all"
+                                        >
+                                            I'm Here Now
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -337,7 +495,7 @@ const OrderTracker = () => {
                                     3. Arrived & Verification
                                 </h4>
                                 <p className="text-xs text-slate-400 font-medium mt-0.5">
-                                    Present your 6-digit confirmation code.
+                                    {isSupplier ? 'Match 6-digit code with receiver.' : 'Present your 6-digit confirmation code.'}
                                 </p>
                             </div>
                         </div>
@@ -378,7 +536,7 @@ const OrderTracker = () => {
                     <Marker position={endLoc} icon={PickupIcon}>
                         <Popup>
                             <div className="p-2 text-center">
-                                <p className="font-bold text-xs">📍 Pickup Location</p>
+                                <p className="font-bold text-xs">📍 {isSupplier ? 'Your Food Venue' : 'Pickup Location'}</p>
                                 <p className="text-[10px] text-slate-500">{reservationData?.foodListing?.location}</p>
                             </div>
                         </Popup>
@@ -386,7 +544,14 @@ const OrderTracker = () => {
 
                     {/* Vehicle Marker */}
                     {currentLat && (
-                        <Marker position={[currentLat, currentLng]} icon={createVehicleIcon()} />
+                        <Marker position={[currentLat, currentLng]} icon={createVehicleIcon()}>
+                            <Popup>
+                                <div className="p-2 text-center">
+                                    <p className="font-bold text-xs">🛵 {isSupplier ? `${reservationData?.receiver?.name || 'Receiver'} En Route` : 'Your Live Route'}</p>
+                                    <p className="text-[10px] text-slate-500">ETA: ~{minsLeft} mins</p>
+                                </div>
+                            </Popup>
+                        </Marker>
                     )}
                 </MapContainer>
 
@@ -394,12 +559,14 @@ const OrderTracker = () => {
                 <div className="absolute top-4 left-4 z-[400] bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-lg border border-slate-100 flex items-center gap-2">
                     <Navigation className="w-4 h-4 text-brand-600" />
                     <span className="font-bold text-slate-900 text-xs">
-                        {arrived ? 'Arrived at Destination' : 'Live Navigation Tracking'}
+                        {isSupplier 
+                            ? (arrived ? 'Receiver Arrived at Destination' : 'Live Tracking: Receiver En Route')
+                            : (arrived ? 'Arrived at Destination' : 'Live Navigation Tracking')}
                     </span>
                 </div>
             </div>
 
-            {/* QR CODE MODAL */}
+            {/* QR CODE MODAL (for receiver) */}
             {showQr && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center relative animate-scale-up">
