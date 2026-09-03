@@ -177,13 +177,13 @@ const MyReservations = () => {
                 reservationId: res._id,
                 pickupCode: res.pickupCode,
                 customEmail: target
-            });
+            }, { timeout: 12000 });
             setActionMsg(data.message || `📧 Pickup pass successfully sent to ${target}!`);
             setEmailModalData(null);
             setCustomEmailInput('');
             setTimeout(() => setActionMsg(null), 6000);
         } catch (err) {
-            setActionError(err.response?.data?.message || 'Failed to dispatch email pass.');
+            setActionError(err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Request timed out. Please try again.' : 'Failed to dispatch email pass.'));
         } finally {
             setEmailingId(null);
         }

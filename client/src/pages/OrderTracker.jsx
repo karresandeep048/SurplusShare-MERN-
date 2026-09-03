@@ -123,13 +123,13 @@ const OrderTracker = () => {
             const { data } = await axios.post('/api/reservations/resend-email', {
                 pickupCode: code,
                 customEmail: target
-            });
+            }, { timeout: 12000 });
             setIsEmailLiveDelivered(data.delivered === true);
             setEmailSuccessMsg(data.message || `Pickup pass dispatched to ${target}!`);
             setShowCustomEmail(false);
             setCustomEmail('');
         } catch (err) {
-            setEmailErrorMsg(err.response?.data?.message || 'Failed to dispatch email pass. Please try again.');
+            setEmailErrorMsg(err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Request timed out. Please check server connection.' : 'Failed to dispatch email pass. Please try again.'));
         } finally {
             setEmailSending(false);
         }

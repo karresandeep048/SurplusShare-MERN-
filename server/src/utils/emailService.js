@@ -20,7 +20,10 @@ export const createTransporter = () => {
             auth: {
                 user: user.trim(),
                 pass: pass.trim().replace(/\s+/g, '') // strip any extra spaces
-            }
+            },
+            connectionTimeout: 8000,
+            greetingTimeout: 8000,
+            socketTimeout: 10000
         });
     }
 
