@@ -134,7 +134,7 @@ const OrderTracker = () => {
         try {
             const { data } = await axios.post('/api/reservations/notify-donor-email', {
                 pickupCode: code
-            }, { timeout: 12000 });
+            }, { timeout: 25000 });
 
             setDonorEmailSuccess(data.message || `Pickup verification code & details sent to food donor!`);
             setTimeout(() => setDonorEmailSuccess(null), 8000);
