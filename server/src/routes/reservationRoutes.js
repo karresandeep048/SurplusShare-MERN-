@@ -6,9 +6,7 @@ import {
     notifyArrival, 
     verifyPickupCode, 
     markCollected,
-    cancelReservation,
-    resendEmailPass,
-    sendCustomTestEmail
+    cancelReservation
 } from '../controllers/reservationController.js';
 import { authenticate, requireSupplier } from '../middleware/auth.js';
 
@@ -18,8 +16,6 @@ router.get('/my', authenticate, getMyReservations);
 router.get('/supplier', authenticate, requireSupplier, getSupplierReservations);
 router.post('/', authenticate, createReservation);
 router.post('/notify-arrival', authenticate, notifyArrival);
-router.post('/resend-email', authenticate, resendEmailPass);
-router.post('/test-email', authenticate, sendCustomTestEmail);
 router.post('/verify-code', authenticate, requireSupplier, verifyPickupCode);
 router.post('/:id/collect', authenticate, requireSupplier, markCollected);
 router.post('/:id/cancel', authenticate, cancelReservation);

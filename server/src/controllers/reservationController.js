@@ -1,11 +1,6 @@
 import Reservation from '../models/Reservation.js';
 import FoodListing from '../models/FoodListing.js';
 import User from '../models/User.js';
-import {
-    sendReservationNotificationToSupplier,
-    sendReservationConfirmationToReceiver,
-    sendArrivalAlertToSupplier
-} from '../utils/emailService.js';
 
 const generatePickupCode = () => {
     return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit code
@@ -80,37 +75,6 @@ export const createReservation = async (req, res) => {
 
         await reservation.save();
 
-        // Asynchronously dispatch Gmail / email notifications
-        const receiver = await User.findById(req.user.id);
-        if (listing.supplier && receiver) {
-            sendReservationNotificationToSupplier({
-                supplierEmail: listing.supplier.email,
-                supplierName: listing.supplier.name || 'Food Donor',
-                receiverName: receiver.name || 'Community Member',
-                receiverEmail: receiver.email,
-                foodName: listing.foodName,
-                quantity,
-                unit: listing.unit,
-                pickupCode,
-                pickupLocation: listing.location,
-                pickupStart: listing.pickupStart,
-                pickupEnd: listing.pickupEnd
-            }).catch(e => console.error('Supplier email dispatch error:', e));
-
-            sendReservationConfirmationToReceiver({
-                receiverEmail: receiver.email,
-                receiverName: receiver.name || 'Community Member',
-                supplierName: listing.supplier.name || 'Food Donor',
-                foodName: listing.foodName,
-                quantity,
-                unit: listing.unit,
-                pickupCode,
-                pickupLocation: listing.location,
-                pickupStart: listing.pickupStart,
-                pickupEnd: listing.pickupEnd
-            }).catch(e => console.error('Receiver email dispatch error:', e));
-        }
-
         res.status(201).json(reservation);
     } catch (err) {
         res.status(400).json({ message: 'Error creating reservation', error: err.message });
@@ -174,16 +138,6 @@ export const notifyArrival = async (req, res) => {
         reservation.pickerArrived = true;
         reservation.arrivedAt = new Date();
         await reservation.save();
-
-        if (reservation.foodListing?.supplier?.email) {
-            sendArrivalAlertToSupplier({
-                supplierEmail: reservation.foodListing.supplier.email,
-                supplierName: reservation.foodListing.supplier.name || 'Food Donor',
-                receiverName: reservation.receiver?.name || 'Receiver',
-                foodName: reservation.foodListing.foodName,
-                pickupCode: reservation.pickupCode
-            }).catch(e => console.error('Arrival email error:', e));
-        }
 
         res.json({
             success: true,
@@ -343,132 +297,3 @@ export const cancelReservation = async (req, res) => {
         res.status(400).json({ message: 'Error cancelling reservation', error: err.message });
     }
 };
-
-// Resend pickup pass email on demand for any reservation
-export const resendEmailPass = async (req, res) => {
-    try {
-        const { reservationId, pickupCode, customEmail } = req.body;
-        const query = reservationId ? { _id: reservationId } : { pickupCode };
-
-        const reservation = await Reservation.findOne(query)
-            .populate({
-                path: 'foodListing',
-                populate: { path: 'supplier', select: 'name email location' }
-            })
-            .populate('receiver', 'name email');
-
-        if (!reservation) {
-            return res.status(404).json({ message: 'Reservation not found' });
-        }
-
-        const targetEmail = customEmail || reservation.receiver?.email || req.user.email;
-        const receiverName = reservation.receiver?.name || req.user.name || 'Community Member';
-        const supplierName = reservation.foodListing?.supplier?.name || 'Food Donor';
-        const foodName = reservation.foodListing?.foodName || 'Surplus Meal';
-
-        const emailResult = await sendReservationConfirmationToReceiver({
-            receiverEmail: targetEmail,
-            receiverName,
-            supplierName,
-            foodName,
-            quantity: reservation.quantity,
-            unit: reservation.foodListing?.unit || 'portions',
-            pickupCode: reservation.pickupCode,
-            pickupLocation: reservation.foodListing?.location || 'Designated Pickup Spot',
-            pickupStart: reservation.foodListing?.pickupStart,
-            pickupEnd: reservation.foodListing?.pickupEnd
-        });
-
-        const isRealDelivered = emailResult?.delivered === true;
-
-        res.json({
-            success: true,
-            delivered: isRealDelivered,
-            simulated: !isRealDelivered,
-            message: isRealDelivered 
-                ? `🎉 Real email delivered to ${targetEmail}!` 
-                : (emailResult?.error 
-                    ? `⚠️ Email delivery warning (${emailResult.error}). Preview logged to terminal.` 
-                    : `ℹ️ Pickup pass logged to server terminal preview. (For real Gmail inbox delivery, a 16-character Google App Password is required in server/.env)`),
-            targetEmail,
-            pickupCode: reservation.pickupCode,
-            emailResult
-        });
-    } catch (err) {
-        console.error('Error resending email pass:', err);
-        res.status(500).json({ message: 'Failed to dispatch email pass', error: err.message });
-    }
-};
-
-// Send a test or diagnostic email directly to any email address
-export const sendCustomTestEmail = async (req, res) => {
-    try {
-        const { targetEmail, emailType = 'CLAIM_PASS', customNote } = req.body;
-
-        const recipient = targetEmail || req.user?.email || process.env.EMAIL_USER;
-        if (!recipient) {
-            return res.status(400).json({ message: 'Please provide a valid recipient email address.' });
-        }
-
-        let emailResult;
-        if (emailType === 'SUPPLIER_ALERT') {
-            emailResult = await sendReservationNotificationToSupplier({
-                supplierEmail: recipient,
-                supplierName: req.user?.name || 'Food Donor',
-                receiverName: 'Sandeep (Test Receiver)',
-                receiverEmail: recipient,
-                foodName: 'Surplus Fresh Biryani & Bread',
-                quantity: 4,
-                unit: 'meals',
-                pickupCode: '749201',
-                pickupLocation: 'Koramangala, Bengaluru',
-                pickupStart: new Date(),
-                pickupEnd: new Date(Date.now() + 3 * 3600 * 1000)
-            });
-        } else if (emailType === 'ARRIVAL_ALERT') {
-            emailResult = await sendArrivalAlertToSupplier({
-                supplierEmail: recipient,
-                supplierName: 'Green Bowl Restaurant',
-                receiverName: req.user?.name || 'Community Receiver',
-                foodName: 'Fresh Artisanal Bread & Salad',
-                pickupCode: '839210'
-            });
-        } else {
-            // Default CLAIM_PASS
-            emailResult = await sendReservationConfirmationToReceiver({
-                receiverEmail: recipient,
-                receiverName: req.user?.name || 'Food Hero',
-                supplierName: 'Green Bowl Restaurant',
-                foodName: 'Freshly Packed Vegetarian Thali',
-                quantity: 2,
-                unit: 'portions',
-                pickupCode: '918234',
-                pickupLocation: 'Koramangala, Bengaluru',
-                pickupStart: new Date(),
-                pickupEnd: new Date(Date.now() + 4 * 3600 * 1000)
-            });
-        }
-
-        const isRealDelivered = emailResult?.delivered === true;
-
-        res.json({
-            success: true,
-            delivered: isRealDelivered,
-            simulated: !isRealDelivered,
-            message: isRealDelivered 
-                ? `✓ Real ${emailType} email delivered to ${recipient}!` 
-                : (emailResult?.error
-                    ? `⚠️ ${emailType} delivery warning (${emailResult.error}). Preview logged to terminal.`
-                    : `ℹ️ ${emailType} logged to server terminal preview. (For real Gmail inbox delivery, a 16-character Google App Password is required in server/.env)`),
-            targetEmail: recipient,
-            emailType,
-            emailResult
-        });
-    } catch (err) {
-        console.error('Error sending test email:', err);
-        res.status(500).json({ message: 'Failed to send test email', error: err.message });
-    }
-};
-
-
-

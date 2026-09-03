@@ -14,15 +14,9 @@ import {
     KeyRound, 
     Loader2, 
     AlertCircle, 
-    Clock, 
     Check,
     PlusSquare,
-    Search,
-    Sparkles,
-    ArrowRight,
-    Mail,
-    Send,
-    Navigation
+    Search
 } from 'lucide-react';
 
 const DEFAULT_FOOD_IMAGE = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=100&q=80';
@@ -33,11 +27,6 @@ const Dashboard = () => {
     const [incomingReservations, setIncomingReservations] = useState([]);
     const [myReservations, setMyReservations] = useState([]);
     
-    // Email Test Center states
-    const [testEmailAddress, setTestEmailAddress] = useState('');
-    const [sendingTestEmail, setSendingTestEmail] = useState(false);
-    const [emailTestMsg, setEmailTestMsg] = useState(null);
-    const [emailTestError, setEmailTestError] = useState(null);
     const [supplierStats, setSupplierStats] = useState({
         active: 0,
         reserved: 0,
@@ -123,26 +112,6 @@ const Dashboard = () => {
             setVerifyError(err.response?.data?.message || 'Invalid code. Could not verify pickup.');
         } finally {
             setVerifying(false);
-        }
-    };
-
-    const handleTriggerTestEmail = async (type = 'CLAIM_PASS') => {
-        setSendingTestEmail(true);
-        setEmailTestMsg(null);
-        setEmailTestError(null);
-        const target = testEmailAddress.trim() || user?.email;
-
-        try {
-            const { data } = await axios.post('/api/reservations/test-email', {
-                targetEmail: target,
-                emailType: type
-            });
-            setEmailTestMsg(data.message || `✓ ${type} email dispatched successfully to ${target}!`);
-            setTimeout(() => setEmailTestMsg(null), 8000);
-        } catch (err) {
-            setEmailTestError(err.response?.data?.message || 'Failed to trigger test email.');
-        } finally {
-            setSendingTestEmail(false);
         }
     };
 
@@ -303,7 +272,7 @@ const Dashboard = () => {
                                 >
                                     {verifying ? (
                                         <>
-                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                             <Loader2 className="w-4 h-4 animate-spin" />
                                             <span>Verifying Code...</span>
                                         </>
                                     ) : (
@@ -434,102 +403,6 @@ const Dashboard = () => {
                     </div>
                 </div>
             )}
-
-            {/* EMAIL NOTIFICATION & DISPATCH CENTER WIDGET */}
-            <div className="mt-8 bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200/80">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2 mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-2xl">
-                            <Mail className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h3 className="text-lg font-black text-slate-900">Email Notification & Alert Center</h3>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    System Active
-                                </span>
-                            </div>
-                            <p className="text-xs text-slate-500 font-medium">
-                                Real-time dual party email dispatches for reservations, vouchers, and donor arrival alerts.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Email Test Status Banner */}
-                {emailTestMsg && (
-                    <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-bold text-emerald-800 flex items-center gap-2 animate-fade-in shadow-sm">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>{emailTestMsg}</span>
-                    </div>
-                )}
-                {emailTestError && (
-                    <div className="mb-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-bold text-rose-800 flex items-center gap-2 animate-fade-in shadow-sm">
-                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                        <span>{emailTestError}</span>
-                    </div>
-                )}
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                    {/* Left: Quick Sender */}
-                    <div className="lg:col-span-7 space-y-3">
-                        <label className="text-xs font-bold text-slate-700 block">
-                            Send / Test Live Email Notification To:
-                        </label>
-                        <div className="flex flex-col sm:flex-row items-center gap-2">
-                            <input
-                                type="email"
-                                placeholder={`Enter email (defaults to ${user?.email || 'your email'})`}
-                                value={testEmailAddress}
-                                onChange={(e) => setTestEmailAddress(e.target.value)}
-                                className="w-full text-xs border border-slate-300 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-slate-50/50"
-                            />
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                            <button
-                                onClick={() => handleTriggerTestEmail('CLAIM_PASS')}
-                                disabled={sendingTestEmail}
-                                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-sm flex items-center gap-1.5"
-                            >
-                                {sendingTestEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                                <span>Send Claim Pass Voucher</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTriggerTestEmail('SUPPLIER_ALERT')}
-                                disabled={sendingTestEmail}
-                                className="bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-sm flex items-center gap-1.5"
-                            >
-                                {sendingTestEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
-                                <span>Send Donor Claim Alert</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTriggerTestEmail('ARRIVAL_ALERT')}
-                                disabled={sendingTestEmail}
-                                className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-sm flex items-center gap-1.5"
-                            >
-                                {sendingTestEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Navigation className="w-3.5 h-3.5" />}
-                                <span>Send Arrival Alert</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Right: Info Box */}
-                    <div className="lg:col-span-5 bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
-                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                            <span>Automated Email Features</span>
-                        </div>
-                        <ul className="space-y-1 text-[11px] text-slate-600">
-                            <li>• <strong>Instant Claim Pass:</strong> Auto-dispatched on every food claim with 6-digit OTP.</li>
-                            <li>• <strong>Donor Arrival Notice:</strong> Sent when receiver reaches the venue.</li>
-                            <li>• <strong>Safe Fallback:</strong> Zero application hangs with 5s timeout & logs.</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
 
         </div>
     );

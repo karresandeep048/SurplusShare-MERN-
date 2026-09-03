@@ -4,25 +4,16 @@ import { AuthContext } from '../context/AuthContext';
 import { Link, useLocation } from 'react-router-dom';
 import { 
     Package, 
-    Clock, 
-    ShieldCheck, 
     Loader2, 
     Bell, 
     CheckCircle2, 
-    KeyRound, 
     AlertCircle, 
     Navigation, 
-    Calendar,
-    User,
-    ArrowRight,
-    Copy,
-    Check,
-    QrCode,
-    X,
-    Trash2,
-    Ban,
-    Mail,
-    Send
+    Copy, 
+    Check, 
+    QrCode, 
+    X, 
+    Ban 
 } from 'lucide-react';
 
 const DEFAULT_FOOD_IMAGE = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80';
@@ -32,10 +23,8 @@ const QRCodeDisplay = ({ code, foodName }) => {
     return (
         <div className="flex flex-col items-center justify-center p-6 bg-white rounded-3xl border border-slate-100 shadow-xl text-center">
             <div className="p-4 bg-slate-900 rounded-2xl mb-4 shadow-inner">
-                {/* SVG pattern simulating a clean QR Code with code in center */}
                 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <rect width="180" height="180" rx="16" fill="white"/>
-                    {/* Corner Position Marks */}
                     <rect x="16" y="16" width="40" height="40" rx="6" fill="#0f172a"/>
                     <rect x="24" y="24" width="24" height="24" rx="3" fill="white"/>
                     <rect x="30" y="30" width="12" height="12" rx="2" fill="#059669"/>
@@ -48,7 +37,6 @@ const QRCodeDisplay = ({ code, foodName }) => {
                     <rect x="24" y="132" width="24" height="24" rx="3" fill="white"/>
                     <rect x="30" y="138" width="12" height="12" rx="2" fill="#059669"/>
 
-                    {/* Data Dots Pattern */}
                     <rect x="68" y="20" width="10" height="10" rx="2" fill="#0f172a"/>
                     <rect x="84" y="20" width="10" height="10" rx="2" fill="#059669"/>
                     <rect x="100" y="20" width="10" height="10" rx="2" fill="#0f172a"/>
@@ -61,7 +49,6 @@ const QRCodeDisplay = ({ code, foodName }) => {
                     <rect x="134" y="68" width="10" height="10" rx="2" fill="#0f172a"/>
                     <rect x="150" y="68" width="10" height="10" rx="2" fill="#059669"/>
 
-                    {/* Center Code Badge */}
                     <rect x="52" y="64" width="76" height="52" rx="10" fill="#059669"/>
                     <text x="90" y="95" fill="white" fontSize="18" fontFamily="monospace" fontWeight="900" textAnchor="middle">
                         {code}
@@ -96,11 +83,6 @@ const MyReservations = () => {
     const [qrModalData, setQrModalData] = useState(null);
     const [notifyingId, setNotifyingId] = useState(null);
     const [cancellingId, setCancellingId] = useState(null);
-    
-    // Email states
-    const [emailingId, setEmailingId] = useState(null);
-    const [emailModalData, setEmailModalData] = useState(null);
-    const [customEmailInput, setCustomEmailInput] = useState('');
     const location = useLocation();
 
     const isSupplier = user?.role?.toLowerCase() === 'supplier';
@@ -166,29 +148,6 @@ const MyReservations = () => {
         }
     };
 
-    // Receiver: Send or Resend Pickup Pass via Email
-    const handleSendEmailPass = async (res, customEmail = null) => {
-        setEmailingId(res._id);
-        setActionError(null);
-        setActionMsg(null);
-        try {
-            const target = customEmail || user?.email;
-            const { data } = await axios.post('/api/reservations/resend-email', {
-                reservationId: res._id,
-                pickupCode: res.pickupCode,
-                customEmail: target
-            }, { timeout: 12000 });
-            setActionMsg(data.message || `📧 Pickup pass successfully sent to ${target}!`);
-            setEmailModalData(null);
-            setCustomEmailInput('');
-            setTimeout(() => setActionMsg(null), 6000);
-        } catch (err) {
-            setActionError(err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Request timed out. Please try again.' : 'Failed to dispatch email pass.'));
-        } finally {
-            setEmailingId(null);
-        }
-    };
-
     // Receiver: Cancel active reservation
     const handleCancelReservation = async (reservationId) => {
         if (!window.confirm('Are you sure you want to cancel this reservation? The food portions will be returned to the community pool.')) return;
@@ -240,7 +199,7 @@ const MyReservations = () => {
                     <p className="text-slate-500 font-medium text-sm">
                         {isSupplier 
                             ? 'Verify receiver pickup codes and complete safe food handovers.' 
-                            : 'Access your 6-digit pickup passes, send email vouchers, and track pickup orders.'}
+                            : 'Access your 6-digit pickup passes and track pickup orders.'}
                     </p>
                 </div>
             </div>
@@ -333,16 +292,11 @@ const MyReservations = () => {
                                                         <Bell className="w-3 h-3" /> Picker Arrived
                                                     </span>
                                                 )}
-                                                {!isSupplier && (
-                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
-                                                        <Check className="w-2.5 h-2.5" /> Email Sent
-                                                    </span>
-                                                )}
                                             </div>
 
                                             <p className="text-xs text-slate-500 font-medium mb-2.5">
                                                 {isSupplier ? (
-                                                    <span>Claimed by <strong className="text-slate-800">{res.receiver?.name || 'Receiver'}</strong> ({res.receiver?.email})</span>
+                                                    <span>Claimed by <strong className="text-slate-800">{res.receiver?.name || 'Receiver'}</strong></span>
                                                 ) : (
                                                     <span>Donor: <strong className="text-slate-800">{res.foodListing?.supplier?.name || 'Local Supplier'}</strong></span>
                                                 )}
@@ -381,20 +335,11 @@ const MyReservations = () => {
                                                     </div>
                                                     <button
                                                         onClick={() => handleVerifyItem(res._id)}
-                                                        disabled={verifyingId === res._id || (verifyInputMap[res._id] || '').length !== 6}
-                                                        className="w-full sm:w-auto mt-2 sm:mt-5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow transition-all"
+                                                        disabled={verifyingId === res._id}
+                                                        className="w-full sm:w-auto mt-2 sm:mt-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md"
                                                     >
-                                                        {verifyingId === res._id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirm Match'}
+                                                        {verifyingId === res._id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirm Handover'}
                                                     </button>
-                                                </div>
-                                            ) : res.status === 'COLLECTED' ? (
-                                                <div className="text-right">
-                                                    <span className="inline-flex items-center text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
-                                                        <CheckCircle2 className="w-4 h-4 mr-1.5" /> Handover Complete
-                                                    </span>
-                                                    <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                                                        {new Date(res.collectedAt || res.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </p>
                                                 </div>
                                             ) : (
                                                 <span className="text-xs font-bold text-slate-500">{res.status}</span>
@@ -427,17 +372,6 @@ const MyReservations = () => {
                                                     </button>
                                                 </div>
 
-                                                {/* Email Pass Button */}
-                                                <button
-                                                    onClick={() => setEmailModalData(res)}
-                                                    disabled={emailingId === res._id}
-                                                    className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 text-xs font-bold shadow-sm"
-                                                    title="Email digital pickup pass"
-                                                >
-                                                    {emailingId === res._id ? <Loader2 className="w-4 h-4 animate-spin text-emerald-600" /> : <Mail className="w-4 h-4 text-emerald-600" />}
-                                                    <span className="hidden sm:inline">Email Pass</span>
-                                                </button>
-
                                                 {res.status === 'RESERVED' && (
                                                     <div className="flex items-center gap-2 w-full sm:w-auto">
                                                         {/* Live Track button */}
@@ -469,70 +403,6 @@ const MyReservations = () => {
                             </div>
                         );
                     })}
-                </div>
-            )}
-
-            {/* EMAIL PASS POPUP MODAL */}
-            {emailModalData && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 relative animate-scale-up">
-                        <button 
-                            onClick={() => setEmailModalData(null)}
-                            className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full bg-slate-100"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
-                        
-                        <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mb-4">
-                            <Mail className="w-6 h-6" />
-                        </div>
-
-                        <h3 className="text-lg font-black text-slate-900 mb-1">Email Digital Pickup Pass</h3>
-                        <p className="text-xs text-slate-500 mb-4">
-                            Send the official pickup voucher for <strong>{emailModalData.foodListing?.foodName}</strong> with 6-digit code <span className="font-mono font-bold text-emerald-700">#{emailModalData.pickupCode}</span> to your inbox or another email.
-                        </p>
-
-                        <div className="space-y-3 mb-6">
-                            <button
-                                onClick={() => handleSendEmailPass(emailModalData, user?.email)}
-                                disabled={emailingId === emailModalData._id}
-                                className="w-full p-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition"
-                            >
-                                {emailingId === emailModalData._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                <span>Send to My Registered Email ({user?.email})</span>
-                            </button>
-
-                            <div className="relative flex py-1 items-center">
-                                <div className="flex-grow border-t border-slate-200"></div>
-                                <span className="flex-shrink mx-2 text-[11px] font-bold text-slate-400 uppercase">Or Send to Another Email</span>
-                                <div className="flex-grow border-t border-slate-200"></div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="email"
-                                    placeholder="Enter recipient email..."
-                                    value={customEmailInput}
-                                    onChange={(e) => setCustomEmailInput(e.target.value)}
-                                    className="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none"
-                                />
-                                <button
-                                    onClick={() => handleSendEmailPass(emailModalData, customEmailInput)}
-                                    disabled={emailingId === emailModalData._id || !customEmailInput.trim()}
-                                    className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"
-                                >
-                                    Send
-                                </button>
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={() => setEmailModalData(null)}
-                            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs"
-                        >
-                            Cancel
-                        </button>
-                    </div>
                 </div>
             )}
 
