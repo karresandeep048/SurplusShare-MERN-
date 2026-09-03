@@ -9,7 +9,12 @@ const reservationSchema = new mongoose.Schema({
     pickerArrived: { type: Boolean, default: false },
     arrivedAt: { type: Date },
     reservedAt: { type: Date, default: Date.now },
-    collectedAt: { type: Date }
+    collectedAt: { type: Date },
+    receiverLocation: {
+        lat: { type: Number },
+        lng: { type: Number },
+        updatedAt: { type: Date }
+    }
 }, { timestamps: true });
 
 export default mongoose.model('Reservation', reservationSchema);

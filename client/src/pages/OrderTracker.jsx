@@ -76,8 +76,24 @@ const OrderTracker = () => {
     const [donorEmailSuccess, setDonorEmailSuccess] = useState(null);
     const [donorEmailError, setDonorEmailError] = useState(null);
 
+    // Live GPS location tracking
+    const [receiverLivePos, setReceiverLivePos] = useState(null);
+    const [locationSharing, setLocationSharing] = useState(false);
+    const [locationError, setLocationError] = useState(null);
+
     const [startLoc, setStartLoc] = useState([12.9279, 77.5871]); // Starting location
     const [endLoc, setEndLoc] = useState([12.9352, 77.6245]); // Food venue location
+
+    // Haversine distance in km between two [lat, lng] points
+    const haversineDistance = (a, b) => {
+        const R = 6371;
+        const dLat = (b[0] - a[0]) * Math.PI / 180;
+        const dLng = (b[1] - a[1]) * Math.PI / 180;
+        const sinHalf = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return R * 2 * Math.atan2(Math.sqrt(sinHalf), Math.sqrt(1 - sinHalf));
+    };
 
     const fetchReservation = async () => {
         try {
@@ -97,6 +113,10 @@ const OrderTracker = () => {
                 if (data.foodListing?.coordinates?.lat && data.foodListing?.coordinates?.lng) {
                     setEndLoc([data.foodListing.coordinates.lat, data.foodListing.coordinates.lng]);
                 }
+                // Supplier: pick up live receiver location from reservation data
+                if (isSupplier && data.receiverLocation?.lat && data.receiverLocation?.lng) {
+                    setReceiverLivePos([data.receiverLocation.lat, data.receiverLocation.lng]);
+                }
             }
         } catch (err) {
             console.error('Error fetching reservation in tracker:', err);
@@ -107,9 +127,49 @@ const OrderTracker = () => {
 
     useEffect(() => {
         fetchReservation();
-        const interval = setInterval(fetchReservation, 8000);
+        // Supplier polls more frequently (every 4s) to see live receiver movement; receiver polls every 8s
+        const interval = setInterval(fetchReservation, isSupplier ? 4000 : 8000);
         return () => clearInterval(interval);
-    }, [code]);
+    }, [code, isSupplier]);
+
+    // Receiver: Share live GPS location with server via Geolocation API
+    useEffect(() => {
+        if (isSupplier || arrived || isCollected) return;
+        if (!navigator.geolocation) {
+            setLocationError('Geolocation is not supported by your browser');
+            return;
+        }
+
+        setLocationSharing(true);
+
+        const watchId = navigator.geolocation.watchPosition(
+            (position) => {
+                const { latitude, longitude } = position.coords;
+                setReceiverLivePos([latitude, longitude]);
+                setStartLoc([latitude, longitude]);
+                setLocationError(null);
+
+                // Push location to server
+                axios.post('/api/reservations/update-location', {
+                    pickupCode: code,
+                    lat: latitude,
+                    lng: longitude
+                }).catch(err => console.warn('Location push failed:', err.message));
+            },
+            (err) => {
+                console.warn('Geolocation error:', err.message);
+                setLocationError('Unable to access your location. Using simulated route.');
+                setLocationSharing(false);
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 3000,
+                timeout: 10000
+            }
+        );
+
+        return () => navigator.geolocation.clearWatch(watchId);
+    }, [isSupplier, arrived, isCollected, code]);
 
     // Receiver: Send arrival alert to food donor
     const handleNotifyArrival = async () => {
@@ -173,9 +233,15 @@ const OrderTracker = () => {
         }
     };
 
-    // Calculate current position along the line based on progress
-    const currentLat = startLoc[0] + (endLoc[0] - startLoc[0]) * progress;
-    const currentLng = startLoc[1] + (endLoc[1] - startLoc[1]) * progress;
+    // Calculate current position: use live GPS when available, otherwise interpolate from simulated progress
+    const liveAvailable = receiverLivePos != null;
+    const currentLat = liveAvailable ? receiverLivePos[0] : startLoc[0] + (endLoc[0] - startLoc[0]) * progress;
+    const currentLng = liveAvailable ? receiverLivePos[1] : startLoc[1] + (endLoc[1] - startLoc[1]) * progress;
+
+    // Compute distance-based progress & ETA when live location is available
+    const liveDistKm = liveAvailable ? haversineDistance([currentLat, currentLng], endLoc) : null;
+    const liveProgress = liveAvailable ? Math.max(0, Math.min(1, 1 - (liveDistKm / Math.max(haversineDistance(startLoc, endLoc), 0.01)))) : progress;
+    const liveMinsLeft = liveAvailable ? Math.max(1, Math.ceil(liveDistKm / 0.5)) : Math.max(1, Math.ceil(10 * (1 - progress)));  // ~30km/h avg city speed
 
     // Movement Simulation
     useEffect(() => {
@@ -209,7 +275,7 @@ const OrderTracker = () => {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const minsLeft = Math.max(1, Math.ceil(10 * (1 - progress)));
+    const minsLeft = liveAvailable ? liveMinsLeft : Math.max(1, Math.ceil(10 * (1 - progress)));
 
     return (
         <div className="h-[calc(100vh-64px)] flex flex-col md:flex-row overflow-hidden bg-slate-50 relative">
@@ -330,8 +396,19 @@ const OrderTracker = () => {
                                             <div>
                                                 <h4 className="text-base font-black text-blue-950">~{minsLeft} mins away</h4>
                                                 <p className="text-xs text-blue-700 font-medium">Receiver approaching your venue</p>
+                                                {liveAvailable && liveDistKm != null && (
+                                                    <p className="text-[11px] text-blue-600 font-semibold mt-0.5">
+                                                        📍 {liveDistKm < 1 ? `${Math.round(liveDistKm * 1000)}m` : `${liveDistKm.toFixed(1)}km`} away
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
+                                        {liveAvailable && (
+                                            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 animate-pulse">
+                                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                                                Live GPS
+                                            </span>
+                                        )}
                                     </div>
                                 )}
 
@@ -471,6 +548,37 @@ const OrderTracker = () => {
                             </div>
                         )}
 
+                        {/* Location Sharing Status (Receiver only) */}
+                        {!isSupplier && !arrived && !isCollected && (
+                            <div className={`flex items-center gap-2.5 p-3 rounded-2xl border text-xs font-bold ${
+                                locationSharing
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                    : locationError
+                                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                                        : 'bg-slate-50 border-slate-200 text-slate-600'
+                            }`}>
+                                {locationSharing ? (
+                                    <>
+                                        <span className="relative flex h-2.5 w-2.5 shrink-0">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                        </span>
+                                        <span>Live location sharing active — donor can track your route</span>
+                                    </>
+                                ) : locationError ? (
+                                    <>
+                                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                        <span>{locationError}</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Navigation className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                        <span>Initializing location sharing...</span>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
                         {/* Step-by-Step Progression Timeline */}
                         <div className="relative pl-6 border-l-2 border-slate-100 space-y-6 pt-2">
                             <div className="relative">
@@ -549,6 +657,10 @@ const OrderTracker = () => {
                                 <div className="p-2 text-center">
                                     <p className="font-bold text-xs">🛵 {isSupplier ? `${reservationData?.receiver?.name || 'Receiver'} En Route` : 'Your Live Route'}</p>
                                     <p className="text-[10px] text-slate-500">ETA: ~{minsLeft} mins</p>
+                                    {liveAvailable && liveDistKm != null && (
+                                        <p className="text-[10px] text-emerald-600 font-semibold">📍 {liveDistKm < 1 ? `${Math.round(liveDistKm * 1000)}m` : `${liveDistKm.toFixed(1)}km`} to venue</p>
+                                    )}
+                                    {liveAvailable && <p className="text-[9px] text-emerald-500 font-bold mt-0.5">● LIVE GPS</p>}
                                 </div>
                             </Popup>
                         </Marker>
@@ -563,6 +675,12 @@ const OrderTracker = () => {
                             ? (arrived ? 'Receiver Arrived at Destination' : 'Live Tracking: Receiver En Route')
                             : (arrived ? 'Arrived at Destination' : 'Live Navigation Tracking')}
                     </span>
+                    {isSupplier && liveAvailable && !arrived && (
+                        <span className="flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                            GPS
+                        </span>
+                    )}
                 </div>
             </div>
 

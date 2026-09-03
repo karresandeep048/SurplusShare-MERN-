@@ -258,8 +258,15 @@ export const sendPickupAlertToDonor = async ({
                         </tr>
                     </table>
 
-                    <p style="font-size: 13px; color: #64748b; margin-top: 24px; line-height: 1.5;">
-                        When <strong>${receiverName}</strong> arrives at your location, verify code <strong style="color: #047857;">${pickupCode}</strong> on your SurplusShare dashboard to complete the handover.
+                    <div style="text-align: center; margin: 28px 0 12px;">
+                        <a href="${process.env.CLIENT_URL || 'https://surplus-share-mern.vercel.app'}/track-order/${pickupCode}" 
+                           style="display: inline-block; background: linear-gradient(135deg, #059669, #047857); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 14px; font-size: 14px; font-weight: 800; letter-spacing: 0.5px; box-shadow: 0 4px 14px rgba(5,150,105,0.3);">
+                            📍 Track Receiver Live on Map
+                        </a>
+                    </div>
+
+                    <p style="font-size: 13px; color: #64748b; margin-top: 16px; line-height: 1.5; text-align: center;">
+                        Open the live tracker to see ${receiverName}'s real-time GPS location as they travel to your venue. Verify code <strong style="color: #047857;">${pickupCode}</strong> upon arrival to complete handover.
                     </p>
                 </div>
                 <div class="footer">
@@ -528,8 +535,15 @@ export const sendArrivalAlertToDonor = async ({
                         <span style="font-size: 12px; color: #9f1239;">Match this code with ${receiverName} to complete the food handover.</span>
                     </div>
 
-                    <p style="font-size: 13px; color: #64748b; margin-top: 24px; line-height: 1.5;">
-                        Log in to your SurplusShare dashboard or live tracker to verify and release this food parcel.
+                    <div style="text-align: center; margin: 28px 0 12px;">
+                        <a href="${process.env.CLIENT_URL || 'https://surplus-share-mern.vercel.app'}/track-order/${pickupCode}" 
+                           style="display: inline-block; background: linear-gradient(135deg, #059669, #047857); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 14px; font-size: 14px; font-weight: 800; letter-spacing: 0.5px; box-shadow: 0 4px 14px rgba(5,150,105,0.3);">
+                            📍 Track Receiver Live on Map
+                        </a>
+                    </div>
+
+                    <p style="font-size: 13px; color: #64748b; margin-top: 16px; line-height: 1.5; text-align: center;">
+                        Open the live tracker above to see the receiver's real-time GPS location on the map and verify the handover code.
                     </p>
                 </div>
                 <div class="footer">

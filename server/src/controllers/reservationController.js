@@ -483,3 +483,40 @@ export const cancelReservation = async (req, res) => {
         res.status(400).json({ message: 'Error cancelling reservation', error: err.message });
     }
 };
+
+// Receiver pushes their live GPS coordinates so the supplier can track them on the map
+export const updateReceiverLocation = async (req, res) => {
+    try {
+        const { pickupCode, lat, lng } = req.body;
+
+        if (!pickupCode || lat == null || lng == null) {
+            return res.status(400).json({ message: 'pickupCode, lat, and lng are required' });
+        }
+
+        const reservation = await Reservation.findOne({ pickupCode: String(pickupCode).trim() });
+
+        if (!reservation) {
+            return res.status(404).json({ message: 'Reservation not found' });
+        }
+
+        // Only the receiver themselves can share their location
+        if (String(reservation.receiver) !== String(req.user.id)) {
+            return res.status(403).json({ message: 'Only the receiver can share their live location' });
+        }
+
+        if (reservation.status !== 'RESERVED') {
+            return res.status(400).json({ message: 'Location sharing is only active for reserved (uncollected) pickups' });
+        }
+
+        reservation.receiverLocation = {
+            lat: Number(lat),
+            lng: Number(lng),
+            updatedAt: new Date()
+        };
+        await reservation.save();
+
+        res.json({ success: true, message: 'Location updated' });
+    } catch (err) {
+        res.status(500).json({ message: 'Error updating receiver location', error: err.message });
+    }
+};

@@ -8,7 +8,8 @@ import {
     notifyDonorByEmail,
     verifyPickupCode, 
     markCollected,
-    cancelReservation
+    cancelReservation,
+    updateReceiverLocation
 } from '../controllers/reservationController.js';
 import { authenticate, requireSupplier } from '../middleware/auth.js';
 
@@ -19,6 +20,7 @@ router.get('/supplier', authenticate, requireSupplier, getSupplierReservations);
 router.get('/track/:code', authenticate, getReservationByCode);
 router.post('/', authenticate, createReservation);
 router.post('/notify-arrival', authenticate, notifyArrival);
+router.post('/update-location', authenticate, updateReceiverLocation);
 router.post('/notify-donor-email', authenticate, notifyDonorByEmail);
 router.post('/verify-code', authenticate, requireSupplier, verifyPickupCode);
 router.post('/:id/collect', authenticate, requireSupplier, markCollected);
