@@ -49,6 +49,99 @@ export const createTransporter = async () => {
 };
 
 /**
+ * Unified email dispatcher supporting:
+ * 1. Resend API (HTTPS Port 443 - Recommended for Render Cloud hosts)
+ * 2. Brevo API (HTTPS Port 443)
+ * 3. Nodemailer SMTP (Port 587)
+ */
+export const dispatchEmail = async ({ to, subject, html }) => {
+    if (!to) return { delivered: false, simulated: true, success: false, reason: 'No recipient email' };
+
+    // 1. Resend HTTP REST API (Port 443 - 100% open on Render, Vercel, AWS)
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (resendApiKey) {
+        try {
+            const fromEmail = process.env.RESEND_FROM || 'SurplusShare <onboarding@resend.dev>';
+            const res = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${resendApiKey.trim()}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    from: fromEmail,
+                    to: [to],
+                    subject,
+                    html
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.id) {
+                console.log(`✓ [EMAIL SENT via Resend HTTPS] to ${to} (ID: ${data.id})`);
+                return { delivered: true, simulated: false, success: true, messageId: data.id, provider: 'resend' };
+            } else {
+                console.warn(`⚠️ [RESEND API WARNING] ${JSON.stringify(data)}`);
+            }
+        } catch (resendErr) {
+            console.warn(`⚠️ [RESEND HTTP ERROR] ${resendErr.message}`);
+        }
+    }
+
+    // 2. Brevo HTTP REST API (Port 443)
+    const brevoApiKey = process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY;
+    if (brevoApiKey) {
+        try {
+            const senderEmail = process.env.EMAIL_USER || 'notifications@surplusshare.com';
+            const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+                method: 'POST',
+                headers: {
+                    'api-key': brevoApiKey.trim(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sender: { name: 'SurplusShare', email: senderEmail },
+                    to: [{ email: to }],
+                    subject,
+                    htmlContent: html
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok && (data.messageId || data.messageIds)) {
+                console.log(`✓ [EMAIL SENT via Brevo HTTPS] to ${to} (ID: ${data.messageId})`);
+                return { delivered: true, simulated: false, success: true, messageId: data.messageId, provider: 'brevo' };
+            }
+        } catch (brevoErr) {
+            console.warn(`⚠️ [BREVO HTTP ERROR] ${brevoErr.message}`);
+        }
+    }
+
+    // 3. Nodemailer SMTP (Standard fallback)
+    try {
+        const transporter = await createTransporter();
+        if (transporter) {
+            const fromEmail = process.env.EMAIL_USER || process.env.GMAIL_USER || 'notifications@surplusshare.com';
+            const info = await transporter.sendMail({
+                from: `"SurplusShare" <${fromEmail}>`,
+                to,
+                subject,
+                html
+            });
+
+            console.log(`✓ [EMAIL SENT via SMTP] to ${to} (ID: ${info.messageId})`);
+            return { delivered: true, simulated: false, success: true, messageId: info.messageId, provider: 'smtp' };
+        }
+    } catch (smtpErr) {
+        console.warn(`⚠️ [SMTP ERROR] (${smtpErr.message}).`);
+        return { delivered: false, simulated: true, success: true, error: smtpErr.message };
+    }
+
+    console.log(`[EMAIL LOG] Simulated email to ${to} for "${subject}"`);
+    return { delivered: false, simulated: true, success: true, reason: 'No active SMTP/API credentials' };
+};
+
+/**
  * Sends a detailed email notification to the Food Poster (Donor / Supplier)
  * with the 6-digit verification code and receiver claim details.
  */
@@ -65,7 +158,6 @@ export const sendPickupAlertToDonor = async ({
     pickupStart,
     pickupEnd
 }) => {
-    const fromEmail = process.env.EMAIL_USER || process.env.GMAIL_USER || 'notifications@surplusshare.com';
     const formattedStart = pickupStart ? new Date(pickupStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
     const formattedEnd = pickupEnd ? new Date(pickupEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
     const subject = `🍽️ SurplusShare Pickup Alert: ${receiverName} reserved "${foodName}" (Verification Code #${pickupCode})`;
@@ -151,26 +243,7 @@ export const sendPickupAlertToDonor = async ({
         </html>
     `;
 
-    try {
-        const transporter = await createTransporter();
-        if (!transporter) {
-            console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated email to donor ${supplierEmail} with code ${pickupCode}`);
-            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
-        }
-
-        const info = await transporter.sendMail({
-            from: `"SurplusShare" <${fromEmail}>`,
-            to: supplierEmail,
-            subject,
-            html: htmlContent
-        });
-
-        console.log(`✓ [EMAIL SENT] Pickup verification pass sent to donor ${supplierEmail} (ID: ${info.messageId})`);
-        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
-    } catch (error) {
-        console.warn(`⚠️ [EMAIL WARNING] Could not dispatch to donor (${error.message}). Logged to console.`);
-        return { delivered: false, simulated: true, success: true, error: error.message };
-    }
+    return await dispatchEmail({ to: supplierEmail, subject, html: htmlContent });
 };
 
 /**
@@ -278,26 +351,7 @@ export const sendPickupPassToReceiver = async ({
         </html>
     `;
 
-    try {
-        const transporter = await createTransporter();
-        if (!transporter) {
-            console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated email to receiver ${receiverEmail} with code ${pickupCode}`);
-            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
-        }
-
-        const info = await transporter.sendMail({
-            from: `"SurplusShare" <${fromEmail}>`,
-            to: receiverEmail,
-            subject,
-            html: htmlContent
-        });
-
-        console.log(`✓ [EMAIL SENT] Pickup confirmation pass sent to receiver ${receiverEmail} (ID: ${info.messageId})`);
-        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
-    } catch (error) {
-        console.warn(`⚠️ [EMAIL WARNING] Could not dispatch to receiver (${error.message}). Logged to console.`);
-        return { delivered: false, simulated: true, success: true, error: error.message };
-    }
+    return await dispatchEmail({ to: receiverEmail, subject, html: htmlContent });
 };
 
 /**
@@ -390,26 +444,7 @@ export const sendListingCreatedAlertToDonor = async ({
         </html>
     `;
 
-    try {
-        const transporter = await createTransporter();
-        if (!transporter) {
-            console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated listing email to ${supplierEmail}`);
-            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
-        }
-
-        const info = await transporter.sendMail({
-            from: `"SurplusShare" <${fromEmail}>`,
-            to: supplierEmail,
-            subject,
-            html: htmlContent
-        });
-
-        console.log(`✓ [EMAIL SENT] Listing confirmation sent to donor ${supplierEmail} (ID: ${info.messageId})`);
-        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
-    } catch (error) {
-        console.warn(`⚠️ [EMAIL WARNING] Could not dispatch listing email to donor (${error.message}).`);
-        return { delivered: false, simulated: true, success: true, error: error.message };
-    }
+    return await dispatchEmail({ to: supplierEmail, subject, html: htmlContent });
 };
 
 /**
@@ -478,26 +513,7 @@ export const sendArrivalAlertToDonor = async ({
         </html>
     `;
 
-    try {
-        const transporter = await createTransporter();
-        if (!transporter) {
-            console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated arrival alert to ${supplierEmail}`);
-            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
-        }
-
-        const info = await transporter.sendMail({
-            from: `"SurplusShare" <${fromEmail}>`,
-            to: supplierEmail,
-            subject,
-            html: htmlContent
-        });
-
-        console.log(`✓ [EMAIL SENT] Arrival alert sent to donor ${supplierEmail} (ID: ${info.messageId})`);
-        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
-    } catch (error) {
-        console.warn(`⚠️ [EMAIL WARNING] Could not dispatch arrival alert to donor (${error.message}).`);
-        return { delivered: false, simulated: true, success: true, error: error.message };
-    }
+    return await dispatchEmail({ to: supplierEmail, subject, html: htmlContent });
 };
 
 
