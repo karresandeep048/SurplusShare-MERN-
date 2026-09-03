@@ -1,8 +1,14 @@
+import dns from 'node:dns';
 import nodemailer from 'nodemailer';
+
+// Force IPv4 first to prevent ENETUNREACH on Linux containers without IPv6 routes
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+}
 
 /**
  * Creates and configures the Nodemailer transporter.
- * Supports Gmail (via 16-char App Passwords) or custom SMTP with timeouts.
+ * Uses port 587 STARTTLS with family: 4 (IPv4) for cloud container compatibility (Render, AWS, etc.).
  */
 let transporterInstance = null;
 
@@ -16,14 +22,21 @@ export const createTransporter = () => {
 
     if (!transporterInstance) {
         transporterInstance = nodemailer.createTransport({
-            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false, // STARTTLS
+            requireTLS: true,
+            family: 4, // Enforce IPv4 to avoid ENETUNREACH on container hosts
             auth: {
                 user: user.trim(),
                 pass: pass.trim().replace(/\s+/g, '') // strip any extra spaces
             },
-            connectionTimeout: 8000,
-            greetingTimeout: 8000,
-            socketTimeout: 10000
+            tls: {
+                rejectUnauthorized: false
+            },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000
         });
     }
 

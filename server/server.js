@@ -1,11 +1,13 @@
+import dns from 'node:dns';
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-import authRoutes from './src/routes/authRoutes.js';
-import listingRoutes from './src/routes/listingRoutes.js';
-import reservationRoutes from './src/routes/reservationRoutes.js';
+// Force IPv4 first to prevent ENETUNREACH errors on cloud container hosts like Render
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+}
 
 dotenv.config();
 
