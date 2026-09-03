@@ -1,4 +1,5 @@
 import dns from 'node:dns';
+import dnsPromises from 'node:dns/promises';
 import nodemailer from 'nodemailer';
 
 // Force IPv4 first to prevent ENETUNREACH errors on cloud container hosts like Render
@@ -8,11 +9,9 @@ if (dns.setDefaultResultOrder) {
 
 /**
  * Creates and configures the Nodemailer transporter.
- * Uses port 587 STARTTLS with family: 4 (IPv4) for cloud container compatibility (Render, AWS, etc.).
+ * Pre-resolves IPv4 address to prevent ENETUNREACH IPv6 failures on cloud container hosts like Render.
  */
-let transporterInstance = null;
-
-export const createTransporter = () => {
+export const createTransporter = async () => {
     const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
     const pass = process.env.EMAIL_PASS || process.env.GMAIL_PASS || process.env.EMAIL_PASSWORD;
 
@@ -20,29 +19,33 @@ export const createTransporter = () => {
         return null;
     }
 
-    if (!transporterInstance) {
-        transporterInstance = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 587,
-            secure: false, // STARTTLS for port 587
-            requireTLS: true,
-            lookup: (hostname, options, callback) => {
-                return dns.lookup(hostname, { family: 4, all: false }, callback);
-            },
-            auth: {
-                user: user.trim(),
-                pass: pass.trim().replace(/\s+/g, '') // strip any extra spaces
-            },
-            tls: {
-                rejectUnauthorized: false
-            },
-            connectionTimeout: 15000,
-            greetingTimeout: 15000,
-            socketTimeout: 20000
-        });
+    let hostTarget = 'smtp.gmail.com';
+    try {
+        const ips = await dnsPromises.resolve4('smtp.gmail.com');
+        if (ips && ips.length > 0) {
+            hostTarget = ips[0];
+        }
+    } catch (e) {
+        console.warn('Could not pre-resolve IPv4 for smtp.gmail.com, falling back to hostname:', e.message);
     }
 
-    return transporterInstance;
+    return nodemailer.createTransport({
+        host: hostTarget,
+        port: 587,
+        secure: false, // STARTTLS
+        requireTLS: true,
+        auth: {
+            user: user.trim(),
+            pass: pass.trim().replace(/\s+/g, '') // strip any extra spaces
+        },
+        tls: {
+            servername: 'smtp.gmail.com',
+            rejectUnauthorized: false
+        },
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 20000
+    });
 };
 
 /**
@@ -149,7 +152,7 @@ export const sendPickupAlertToDonor = async ({
     `;
 
     try {
-        const transporter = createTransporter();
+        const transporter = await createTransporter();
         if (!transporter) {
             console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated email to donor ${supplierEmail} with code ${pickupCode}`);
             return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
@@ -276,7 +279,7 @@ export const sendPickupPassToReceiver = async ({
     `;
 
     try {
-        const transporter = createTransporter();
+        const transporter = await createTransporter();
         if (!transporter) {
             console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated email to receiver ${receiverEmail} with code ${pickupCode}`);
             return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
@@ -388,7 +391,7 @@ export const sendListingCreatedAlertToDonor = async ({
     `;
 
     try {
-        const transporter = createTransporter();
+        const transporter = await createTransporter();
         if (!transporter) {
             console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated listing email to ${supplierEmail}`);
             return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
@@ -476,7 +479,7 @@ export const sendArrivalAlertToDonor = async ({
     `;
 
     try {
-        const transporter = createTransporter();
+        const transporter = await createTransporter();
         if (!transporter) {
             console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated arrival alert to ${supplierEmail}`);
             return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
