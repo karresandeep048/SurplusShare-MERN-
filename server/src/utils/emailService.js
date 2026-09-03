@@ -23,10 +23,11 @@ export const createTransporter = () => {
     if (!transporterInstance) {
         transporterInstance = nodemailer.createTransport({
             host: 'smtp.gmail.com',
-            port: 587,
-            secure: false, // STARTTLS
-            requireTLS: true,
-            family: 4, // Enforce IPv4 to avoid ENETUNREACH on cloud container hosts
+            port: 465,
+            secure: true,
+            lookup: (hostname, options, callback) => {
+                return dns.lookup(hostname, { family: 4, all: false }, callback);
+            },
             auth: {
                 user: user.trim(),
                 pass: pass.trim().replace(/\s+/g, '') // strip any extra spaces
@@ -34,9 +35,9 @@ export const createTransporter = () => {
             tls: {
                 rejectUnauthorized: false
             },
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 15000
+            connectionTimeout: 15000,
+            greetingTimeout: 15000,
+            socketTimeout: 20000
         });
     }
 
