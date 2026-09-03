@@ -45,12 +45,21 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // ================================
 
 app.get('/health', (req, res) => {
+    const isEmailConfigured = Boolean(
+        (process.env.EMAIL_USER || process.env.GMAIL_USER) &&
+        (process.env.EMAIL_PASS || process.env.GMAIL_PASS || process.env.EMAIL_PASSWORD)
+    );
+
     res.status(200).json({
         success: true,
         message: 'SurplusShare API is running',
         database: mongoose.connection.readyState === 1
             ? 'MongoDB Atlas connected'
-            : 'MongoDB Atlas disconnected'
+            : 'MongoDB Atlas disconnected',
+        emailService: {
+            configured: isEmailConfigured,
+            sender: process.env.EMAIL_USER || process.env.GMAIL_USER || 'Not set'
+        }
     });
 });
 
