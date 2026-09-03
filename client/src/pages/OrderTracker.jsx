@@ -19,7 +19,9 @@ import {
     QrCode,
     X,
     Sparkles,
-    AlertCircle
+    AlertCircle,
+    Mail,
+    Send
 } from 'lucide-react';
 
 // Custom icons
@@ -58,6 +60,13 @@ const OrderTracker = () => {
     const [showQr, setShowQr] = useState(false);
     const [reservationData, setReservationData] = useState(null);
     const [loadingRes, setLoadingRes] = useState(true);
+
+    // Email sending states
+    const [emailSending, setEmailSending] = useState(false);
+    const [emailSuccessMsg, setEmailSuccessMsg] = useState(null);
+    const [emailErrorMsg, setEmailErrorMsg] = useState(null);
+    const [showCustomEmail, setShowCustomEmail] = useState(false);
+    const [customEmail, setCustomEmail] = useState('');
 
     const [startLoc, setStartLoc] = useState([12.9279, 77.5871]); // User simulated starting location
     const [endLoc, setEndLoc] = useState([12.9352, 77.6245]); // Food venue location
@@ -99,6 +108,27 @@ const OrderTracker = () => {
             console.error('Error notifying arrival:', err);
         } finally {
             setNotifying(false);
+        }
+    };
+
+    // Handle sending/resending digital pickup pass via email
+    const handleSendEmailPass = async (overrideEmail = null) => {
+        setEmailSending(true);
+        setEmailSuccessMsg(null);
+        setEmailErrorMsg(null);
+        try {
+            const target = overrideEmail || customEmail || reservationData?.receiver?.email;
+            const { data } = await axios.post('/api/reservations/resend-email', {
+                pickupCode: code,
+                customEmail: target
+            });
+            setEmailSuccessMsg(data.message || `✓ Pickup Pass successfully emailed to ${target}!`);
+            setShowCustomEmail(false);
+            setCustomEmail('');
+        } catch (err) {
+            setEmailErrorMsg(err.response?.data?.message || 'Failed to dispatch email pass. Please try again.');
+        } finally {
+            setEmailSending(false);
         }
     };
 
@@ -202,6 +232,86 @@ const OrderTracker = () => {
                             <p className="text-xs text-brand-800 font-medium">
                                 Show this code to the donor at the pickup venue to verify and release the surplus food.
                             </p>
+                        </div>
+
+                        {/* Email Pass & Delivery Options Card */}
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
+                                        <Mail className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-bold text-slate-900">Email Pickup Pass</h4>
+                                        <p className="text-[11px] text-slate-500">
+                                            Sent to: <span className="font-semibold text-slate-700">{reservationData?.receiver?.email || 'Your Account Email'}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                                    <Check className="w-3 h-3" /> Email Sent
+                                </span>
+                            </div>
+
+                            {/* Success & Error Messages */}
+                            {emailSuccessMsg && (
+                                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-1.5 animate-fade-in">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span>{emailSuccessMsg}</span>
+                                </div>
+                            )}
+                            {emailErrorMsg && (
+                                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-800 flex items-center gap-1.5 animate-fade-in">
+                                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                    <span>{emailErrorMsg}</span>
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            {!showCustomEmail ? (
+                                <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                        onClick={() => handleSendEmailPass()}
+                                        disabled={emailSending}
+                                        className="flex-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+                                    >
+                                        {emailSending ? <Loader2 className="w-3 h-3 animate-spin text-brand-600" /> : <Send className="w-3 h-3 text-brand-600" />}
+                                        <span>Resend Email Pass</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setShowCustomEmail(true)}
+                                        className="text-xs font-bold text-brand-700 hover:text-brand-800 px-3 py-2 underline"
+                                    >
+                                        Email to another address
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-2 pt-1">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="email"
+                                            placeholder="Enter recipient email address..."
+                                            value={customEmail}
+                                            onChange={(e) => setCustomEmail(e.target.value)}
+                                            className="flex-1 text-xs border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                        />
+                                        <button
+                                            onClick={() => handleSendEmailPass(customEmail)}
+                                            disabled={emailSending || !customEmail.trim()}
+                                            className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-bold px-3 py-2 rounded-xl transition shadow-sm flex items-center gap-1 shrink-0"
+                                        >
+                                            {emailSending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                                            <span>Send</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setShowCustomEmail(false)}
+                                            className="text-xs text-slate-400 hover:text-slate-600 p-2"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Arrival Alert Status Banner */}

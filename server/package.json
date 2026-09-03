@@ -10,6 +10,7 @@
     "seed": "node src/utils/seed.js",
     "seed:reset": "node src/utils/seedReset.js",
     "clean": "node src/utils/cleanDB.js",
+    "test:email": "node testEmail.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

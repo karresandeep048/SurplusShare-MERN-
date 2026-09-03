@@ -20,7 +20,9 @@ import {
     QrCode,
     X,
     Trash2,
-    Ban
+    Ban,
+    Mail,
+    Send
 } from 'lucide-react';
 
 const DEFAULT_FOOD_IMAGE = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80';
@@ -94,6 +96,11 @@ const MyReservations = () => {
     const [qrModalData, setQrModalData] = useState(null);
     const [notifyingId, setNotifyingId] = useState(null);
     const [cancellingId, setCancellingId] = useState(null);
+    
+    // Email states
+    const [emailingId, setEmailingId] = useState(null);
+    const [emailModalData, setEmailModalData] = useState(null);
+    const [customEmailInput, setCustomEmailInput] = useState('');
     const location = useLocation();
 
     const isSupplier = user?.role?.toLowerCase() === 'supplier';
@@ -159,6 +166,29 @@ const MyReservations = () => {
         }
     };
 
+    // Receiver: Send or Resend Pickup Pass via Email
+    const handleSendEmailPass = async (res, customEmail = null) => {
+        setEmailingId(res._id);
+        setActionError(null);
+        setActionMsg(null);
+        try {
+            const target = customEmail || user?.email;
+            const { data } = await axios.post('/api/reservations/resend-email', {
+                reservationId: res._id,
+                pickupCode: res.pickupCode,
+                customEmail: target
+            });
+            setActionMsg(data.message || `📧 Pickup pass successfully sent to ${target}!`);
+            setEmailModalData(null);
+            setCustomEmailInput('');
+            setTimeout(() => setActionMsg(null), 6000);
+        } catch (err) {
+            setActionError(err.response?.data?.message || 'Failed to dispatch email pass.');
+        } finally {
+            setEmailingId(null);
+        }
+    };
+
     // Receiver: Cancel active reservation
     const handleCancelReservation = async (reservationId) => {
         if (!window.confirm('Are you sure you want to cancel this reservation? The food portions will be returned to the community pool.')) return;
@@ -210,21 +240,21 @@ const MyReservations = () => {
                     <p className="text-slate-500 font-medium text-sm">
                         {isSupplier 
                             ? 'Verify receiver pickup codes and complete safe food handovers.' 
-                            : 'Access your 6-digit pickup passes, notify donors upon arrival, and track status.'}
+                            : 'Access your 6-digit pickup passes, send email vouchers, and track pickup orders.'}
                     </p>
                 </div>
             </div>
 
             {/* Notification messages */}
             {actionMsg && (
-                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center gap-2 text-sm font-bold animate-fade-in">
+                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center gap-2 text-sm font-bold animate-fade-in shadow-sm">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                     <span>{actionMsg}</span>
                 </div>
             )}
 
             {actionError && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl flex items-center gap-2 text-sm font-medium animate-fade-in">
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl flex items-center gap-2 text-sm font-medium animate-fade-in shadow-sm">
                     <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
                     <span>{actionError}</span>
                 </div>
@@ -239,7 +269,7 @@ const MyReservations = () => {
                         className={`px-5 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
                             activeTab === tab 
                                 ? 'border-brand-600 text-brand-600' 
-                                : 'border-transparent text-slate-400 hover:text-slate-600'
+                                : 'border-transparent text-slate-500 hover:text-slate-700'
                         }`}
                     >
                         {tab}
@@ -247,46 +277,45 @@ const MyReservations = () => {
                 ))}
             </div>
 
+            {/* Content List */}
             {loading ? (
-                <div className="flex justify-center items-center h-48">
-                    <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
+                <div className="flex flex-col items-center justify-center py-20">
+                    <Loader2 className="w-10 h-10 animate-spin text-brand-600 mb-3" />
+                    <p className="text-xs font-bold text-slate-500">Loading reservations...</p>
                 </div>
             ) : filteredReservations.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 p-8">
-                    <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                    <h3 className="text-lg font-bold text-slate-900 mb-1">No reservations found</h3>
-                    <p className="text-slate-500 font-medium text-xs mb-4">
+                <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200 p-8">
+                    <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 mx-auto mb-4">
+                        <Package className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 mb-1">No reservations found</h3>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
                         {isSupplier 
-                            ? 'No incoming bookings under this filter.' 
-                            : `You don't have any ${activeTab !== 'All' ? activeTab.toLowerCase() : ''} reservations.`}
+                            ? 'No incoming food reservations matching this status filter.' 
+                            : 'You have not claimed any surplus food items in this category yet.'}
                     </p>
                     {!isSupplier && (
-                        <Link to="/find-food" className="inline-flex items-center text-brand-600 font-bold text-sm hover:underline">
-                            Browse surplus food on map →
+                        <Link to="/find-food" className="inline-flex items-center bg-brand-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md">
+                            Browse Available Food
                         </Link>
                     )}
                 </div>
             ) : (
                 <div className="space-y-4">
                     {filteredReservations.map(res => {
-                        const isExpired = res.status === 'EXPIRED' || (res.foodListing?.expiryTime && new Date(res.foodListing.expiryTime) < new Date() && res.status !== 'COLLECTED');
+                        const isExpired = res.status === 'EXPIRED' || (res.foodListing?.expiryTime && new Date(res.foodListing.expiryTime) < new Date() && res.status === 'RESERVED');
 
                         return (
                             <div 
                                 key={res._id} 
-                                className={`bg-white p-5 sm:p-6 rounded-3xl shadow-sm border transition-all ${
-                                    res.pickerArrived && res.status === 'RESERVED'
-                                        ? 'border-amber-300 ring-2 ring-amber-400/20 bg-amber-50/10'
-                                        : 'border-slate-100 hover:shadow-md'
-                                }`}
+                                className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between gap-4"
                             >
-                                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
                                     
-                                    {/* Left: Food Info */}
-                                    <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1">
-                                        <img
-                                            src={res.foodListing?.image || DEFAULT_FOOD_IMAGE}
-                                            onError={(e) => { e.currentTarget.src = DEFAULT_FOOD_IMAGE; }}
+                                    {/* Left: Food thumbnail and info */}
+                                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                                        <img 
+                                            src={res.foodListing?.image || DEFAULT_FOOD_IMAGE} 
                                             alt="Food"
                                             className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-2xl bg-slate-100 shrink-0"
                                         />
@@ -302,6 +331,11 @@ const MyReservations = () => {
                                                 {res.pickerArrived && res.status === 'RESERVED' && (
                                                     <span className="px-2 py-0.5 rounded-md text-[11px] font-black bg-amber-200 text-amber-900 inline-flex items-center gap-1 animate-pulse">
                                                         <Bell className="w-3 h-3" /> Picker Arrived
+                                                    </span>
+                                                )}
+                                                {!isSupplier && (
+                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                                                        <Check className="w-2.5 h-2.5" /> Email Sent
                                                     </span>
                                                 )}
                                             </div>
@@ -367,7 +401,7 @@ const MyReservations = () => {
                                             )
                                         ) : (
                                             /* RECEIVER: View 6-Digit Pass & Actions */
-                                            <div className="w-full sm:w-auto flex flex-col sm:flex-row items-center gap-3">
+                                            <div className="w-full sm:w-auto flex flex-col sm:flex-row items-center gap-2">
                                                 
                                                 {/* Code Badge */}
                                                 <div className="flex items-center gap-2 bg-slate-50 px-3.5 py-2 rounded-2xl border border-slate-200">
@@ -392,6 +426,17 @@ const MyReservations = () => {
                                                         <QrCode className="w-4 h-4" />
                                                     </button>
                                                 </div>
+
+                                                {/* Email Pass Button */}
+                                                <button
+                                                    onClick={() => setEmailModalData(res)}
+                                                    disabled={emailingId === res._id}
+                                                    className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 text-xs font-bold shadow-sm"
+                                                    title="Email digital pickup pass"
+                                                >
+                                                    {emailingId === res._id ? <Loader2 className="w-4 h-4 animate-spin text-emerald-600" /> : <Mail className="w-4 h-4 text-emerald-600" />}
+                                                    <span className="hidden sm:inline">Email Pass</span>
+                                                </button>
 
                                                 {res.status === 'RESERVED' && (
                                                     <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -424,6 +469,70 @@ const MyReservations = () => {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* EMAIL PASS POPUP MODAL */}
+            {emailModalData && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 relative animate-scale-up">
+                        <button 
+                            onClick={() => setEmailModalData(null)}
+                            className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full bg-slate-100"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                        
+                        <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mb-4">
+                            <Mail className="w-6 h-6" />
+                        </div>
+
+                        <h3 className="text-lg font-black text-slate-900 mb-1">Email Digital Pickup Pass</h3>
+                        <p className="text-xs text-slate-500 mb-4">
+                            Send the official pickup voucher for <strong>{emailModalData.foodListing?.foodName}</strong> with 6-digit code <span className="font-mono font-bold text-emerald-700">#{emailModalData.pickupCode}</span> to your inbox or another email.
+                        </p>
+
+                        <div className="space-y-3 mb-6">
+                            <button
+                                onClick={() => handleSendEmailPass(emailModalData, user?.email)}
+                                disabled={emailingId === emailModalData._id}
+                                className="w-full p-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition"
+                            >
+                                {emailingId === emailModalData._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                <span>Send to My Registered Email ({user?.email})</span>
+                            </button>
+
+                            <div className="relative flex py-1 items-center">
+                                <div className="flex-grow border-t border-slate-200"></div>
+                                <span className="flex-shrink mx-2 text-[11px] font-bold text-slate-400 uppercase">Or Send to Another Email</span>
+                                <div className="flex-grow border-t border-slate-200"></div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="email"
+                                    placeholder="Enter recipient email..."
+                                    value={customEmailInput}
+                                    onChange={(e) => setCustomEmailInput(e.target.value)}
+                                    className="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                />
+                                <button
+                                    onClick={() => handleSendEmailPass(emailModalData, customEmailInput)}
+                                    disabled={emailingId === emailModalData._id || !customEmailInput.trim()}
+                                    className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"
+                                >
+                                    Send
+                                </button>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setEmailModalData(null)}
+                            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs"
+                        >
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             )}
 

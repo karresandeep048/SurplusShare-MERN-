@@ -344,3 +344,114 @@ export const cancelReservation = async (req, res) => {
     }
 };
 
+// Resend pickup pass email on demand for any reservation
+export const resendEmailPass = async (req, res) => {
+    try {
+        const { reservationId, pickupCode, customEmail } = req.body;
+        const query = reservationId ? { _id: reservationId } : { pickupCode };
+
+        const reservation = await Reservation.findOne(query)
+            .populate({
+                path: 'foodListing',
+                populate: { path: 'supplier', select: 'name email location' }
+            })
+            .populate('receiver', 'name email');
+
+        if (!reservation) {
+            return res.status(404).json({ message: 'Reservation not found' });
+        }
+
+        const targetEmail = customEmail || reservation.receiver?.email || req.user.email;
+        const receiverName = reservation.receiver?.name || req.user.name || 'Community Member';
+        const supplierName = reservation.foodListing?.supplier?.name || 'Food Donor';
+        const foodName = reservation.foodListing?.foodName || 'Surplus Meal';
+
+        const emailResult = await sendReservationConfirmationToReceiver({
+            receiverEmail: targetEmail,
+            receiverName,
+            supplierName,
+            foodName,
+            quantity: reservation.quantity,
+            unit: reservation.foodListing?.unit || 'portions',
+            pickupCode: reservation.pickupCode,
+            pickupLocation: reservation.foodListing?.location || 'Designated Pickup Spot',
+            pickupStart: reservation.foodListing?.pickupStart,
+            pickupEnd: reservation.foodListing?.pickupEnd
+        });
+
+        res.json({
+            success: true,
+            message: `📧 Pickup pass successfully sent to ${targetEmail}!`,
+            targetEmail,
+            pickupCode: reservation.pickupCode,
+            emailResult
+        });
+    } catch (err) {
+        console.error('Error resending email pass:', err);
+        res.status(500).json({ message: 'Failed to dispatch email pass', error: err.message });
+    }
+};
+
+// Send a test or diagnostic email directly to any email address
+export const sendCustomTestEmail = async (req, res) => {
+    try {
+        const { targetEmail, emailType = 'CLAIM_PASS', customNote } = req.body;
+
+        const recipient = targetEmail || req.user?.email || process.env.EMAIL_USER;
+        if (!recipient) {
+            return res.status(400).json({ message: 'Please provide a valid recipient email address.' });
+        }
+
+        let emailResult;
+        if (emailType === 'SUPPLIER_ALERT') {
+            emailResult = await sendReservationNotificationToSupplier({
+                supplierEmail: recipient,
+                supplierName: req.user?.name || 'Food Donor',
+                receiverName: 'Sandeep (Test Receiver)',
+                receiverEmail: recipient,
+                foodName: 'Surplus Fresh Biryani & Bread',
+                quantity: 4,
+                unit: 'meals',
+                pickupCode: '749201',
+                pickupLocation: 'Koramangala, Bengaluru',
+                pickupStart: new Date(),
+                pickupEnd: new Date(Date.now() + 3 * 3600 * 1000)
+            });
+        } else if (emailType === 'ARRIVAL_ALERT') {
+            emailResult = await sendArrivalAlertToSupplier({
+                supplierEmail: recipient,
+                supplierName: 'Green Bowl Restaurant',
+                receiverName: req.user?.name || 'Community Receiver',
+                foodName: 'Fresh Artisanal Bread & Salad',
+                pickupCode: '839210'
+            });
+        } else {
+            // Default CLAIM_PASS
+            emailResult = await sendReservationConfirmationToReceiver({
+                receiverEmail: recipient,
+                receiverName: req.user?.name || 'Food Hero',
+                supplierName: 'Green Bowl Restaurant',
+                foodName: 'Freshly Packed Vegetarian Thali',
+                quantity: 2,
+                unit: 'portions',
+                pickupCode: '918234',
+                pickupLocation: 'Koramangala, Bengaluru',
+                pickupStart: new Date(),
+                pickupEnd: new Date(Date.now() + 4 * 3600 * 1000)
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `✓ Test ${emailType} email dispatched to ${recipient}!`,
+            targetEmail: recipient,
+            emailType,
+            emailResult
+        });
+    } catch (err) {
+        console.error('Error sending test email:', err);
+        res.status(500).json({ message: 'Failed to send test email', error: err.message });
+    }
+};
+
+
