@@ -13,7 +13,9 @@ import {
     Check, 
     QrCode, 
     X, 
-    Ban 
+    Ban,
+    Mail,
+    Send
 } from 'lucide-react';
 
 const DEFAULT_FOOD_IMAGE = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=200&q=80';
@@ -83,6 +85,7 @@ const MyReservations = () => {
     const [qrModalData, setQrModalData] = useState(null);
     const [notifyingId, setNotifyingId] = useState(null);
     const [cancellingId, setCancellingId] = useState(null);
+    const [emailingDonorId, setEmailingDonorId] = useState(null);
     const location = useLocation();
 
     const isSupplier = user?.role?.toLowerCase() === 'supplier';
@@ -148,6 +151,26 @@ const MyReservations = () => {
         }
     };
 
+    // Receiver: Send Verification Pass & Details to Food Donor via Email
+    const handleEmailDonor = async (res) => {
+        setEmailingDonorId(res._id);
+        setActionError(null);
+        setActionMsg(null);
+        try {
+            const { data } = await axios.post('/api/reservations/notify-donor-email', {
+                reservationId: res._id,
+                pickupCode: res.pickupCode
+            }, { timeout: 12000 });
+
+            setActionMsg(data.message || `📧 Verification code & pickup alert sent to food donor!`);
+            setTimeout(() => setActionMsg(null), 6000);
+        } catch (err) {
+            setActionError(err.response?.data?.message || 'Failed to send email to food donor.');
+        } finally {
+            setEmailingDonorId(null);
+        }
+    };
+
     // Receiver: Cancel active reservation
     const handleCancelReservation = async (reservationId) => {
         if (!window.confirm('Are you sure you want to cancel this reservation? The food portions will be returned to the community pool.')) return;
@@ -199,7 +222,7 @@ const MyReservations = () => {
                     <p className="text-slate-500 font-medium text-sm">
                         {isSupplier 
                             ? 'Verify receiver pickup codes and complete safe food handovers.' 
-                            : 'Access your 6-digit pickup passes and track pickup orders.'}
+                            : 'Access your 6-digit pickup passes, notify food donors, and track orders.'}
                     </p>
                 </div>
             </div>
@@ -296,9 +319,9 @@ const MyReservations = () => {
 
                                             <p className="text-xs text-slate-500 font-medium mb-2.5">
                                                 {isSupplier ? (
-                                                    <span>Claimed by <strong className="text-slate-800">{res.receiver?.name || 'Receiver'}</strong></span>
+                                                    <span>Claimed by <strong className="text-slate-800">{res.receiver?.name || 'Receiver'}</strong> ({res.receiver?.email})</span>
                                                 ) : (
-                                                    <span>Donor: <strong className="text-slate-800">{res.foodListing?.supplier?.name || 'Local Supplier'}</strong></span>
+                                                    <span>Donor: <strong className="text-slate-800">{res.foodListing?.supplier?.name || 'Local Supplier'}</strong> ({res.foodListing?.supplier?.email})</span>
                                                 )}
                                             </p>
 
@@ -374,6 +397,17 @@ const MyReservations = () => {
 
                                                 {res.status === 'RESERVED' && (
                                                     <div className="flex items-center gap-2 w-full sm:w-auto">
+                                                        {/* Email Donor Button */}
+                                                        <button
+                                                            onClick={() => handleEmailDonor(res)}
+                                                            disabled={emailingDonorId === res._id}
+                                                            className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 text-xs font-bold shadow-sm"
+                                                            title="Email verification pass directly to food donor"
+                                                        >
+                                                            {emailingDonorId === res._id ? <Loader2 className="w-4 h-4 animate-spin text-emerald-600" /> : <Mail className="w-4 h-4 text-emerald-600" />}
+                                                            <span className="hidden sm:inline">Email Donor</span>
+                                                        </button>
+
                                                         {/* Live Track button */}
                                                         <Link
                                                             to={`/track-order/${res.pickupCode}`}

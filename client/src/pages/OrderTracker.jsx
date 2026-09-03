@@ -15,7 +15,10 @@ import {
     Clock, 
     Loader2,
     QrCode,
-    X
+    X,
+    Mail,
+    Send,
+    AlertCircle
 } from 'lucide-react';
 
 // Custom icons
@@ -54,6 +57,11 @@ const OrderTracker = () => {
     const [showQr, setShowQr] = useState(false);
     const [reservationData, setReservationData] = useState(null);
     const [loadingRes, setLoadingRes] = useState(true);
+
+    // Donor Email Notification States
+    const [donorEmailSending, setDonorEmailSending] = useState(false);
+    const [donorEmailSuccess, setDonorEmailSuccess] = useState(null);
+    const [donorEmailError, setDonorEmailError] = useState(null);
 
     const [startLoc, setStartLoc] = useState([12.9279, 77.5871]); // User simulated starting location
     const [endLoc, setEndLoc] = useState([12.9352, 77.6245]); // Food venue location
@@ -95,6 +103,25 @@ const OrderTracker = () => {
             console.error('Error notifying arrival:', err);
         } finally {
             setNotifying(false);
+        }
+    };
+
+    // Send pickup verification code email directly to food donor/poster
+    const handleSendEmailToDonor = async () => {
+        setDonorEmailSending(true);
+        setDonorEmailSuccess(null);
+        setDonorEmailError(null);
+        try {
+            const { data } = await axios.post('/api/reservations/notify-donor-email', {
+                pickupCode: code
+            }, { timeout: 12000 });
+
+            setDonorEmailSuccess(data.message || `Pickup verification code & details sent to food donor!`);
+            setTimeout(() => setDonorEmailSuccess(null), 8000);
+        } catch (err) {
+            setDonorEmailError(err.response?.data?.message || 'Failed to email food donor. Please try again.');
+        } finally {
+            setDonorEmailSending(false);
         }
     };
 
@@ -167,7 +194,7 @@ const OrderTracker = () => {
                         )}
                     </div>
 
-                    <div className="p-6 space-y-6">
+                    <div className="p-6 space-y-5">
 
                         {/* 6-Digit Code Card */}
                         <div className="bg-gradient-to-br from-brand-50 via-emerald-50 to-teal-50 border-2 border-brand-200 rounded-3xl p-6 text-center shadow-sm">
@@ -198,6 +225,46 @@ const OrderTracker = () => {
                             <p className="text-xs text-brand-800 font-medium">
                                 Show this code to the donor at the pickup venue to verify and release the surplus food.
                             </p>
+                        </div>
+
+                        {/* Email Verification Pass to Food Poster Card */}
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl shrink-0">
+                                        <Mail className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-bold text-slate-900">Email Verification Pass to Food Poster</h4>
+                                        <p className="text-[11px] text-slate-500">
+                                            Donor: <span className="font-semibold text-slate-700">{reservationData?.foodListing?.supplier?.name || 'Food Donor'}</span> ({reservationData?.foodListing?.supplier?.email || 'Donor Email'})
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {donorEmailSuccess && (
+                                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-start gap-2 animate-fade-in">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                    <span>{donorEmailSuccess}</span>
+                                </div>
+                            )}
+
+                            {donorEmailError && (
+                                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold flex items-start gap-2 animate-fade-in">
+                                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                                    <span>{donorEmailError}</span>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={handleSendEmailToDonor}
+                                disabled={donorEmailSending}
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+                            >
+                                {donorEmailSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                <span>Send Verification Code & Pass to Donor</span>
+                            </button>
                         </div>
 
                         {/* Arrival Alert Status Banner */}
@@ -260,7 +327,7 @@ const OrderTracker = () => {
                                     2. Live Navigation to Venue
                                 </h4>
                                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                    {reservationData?.foodListing?.location || 'Bengaluru location'}
+                                    {reservationData?.foodListing?.location || 'Pickup location'}
                                 </p>
                             </div>
 

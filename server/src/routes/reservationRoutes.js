@@ -4,6 +4,7 @@ import {
     getMyReservations, 
     getSupplierReservations, 
     notifyArrival, 
+    notifyDonorByEmail,
     verifyPickupCode, 
     markCollected,
     cancelReservation
@@ -16,6 +17,7 @@ router.get('/my', authenticate, getMyReservations);
 router.get('/supplier', authenticate, requireSupplier, getSupplierReservations);
 router.post('/', authenticate, createReservation);
 router.post('/notify-arrival', authenticate, notifyArrival);
+router.post('/notify-donor-email', authenticate, notifyDonorByEmail);
 router.post('/verify-code', authenticate, requireSupplier, verifyPickupCode);
 router.post('/:id/collect', authenticate, requireSupplier, markCollected);
 router.post('/:id/cancel', authenticate, cancelReservation);

@@ -1,6 +1,7 @@
 import Reservation from '../models/Reservation.js';
 import FoodListing from '../models/FoodListing.js';
 import User from '../models/User.js';
+import { sendPickupAlertToDonor } from '../utils/emailService.js';
 
 const generatePickupCode = () => {
     return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit code
@@ -75,6 +76,24 @@ export const createReservation = async (req, res) => {
 
         await reservation.save();
 
+        // Asynchronously dispatch email notification to the Food Poster (Donor)
+        const receiver = await User.findById(req.user.id);
+        if (listing.supplier && receiver && listing.supplier.email) {
+            sendPickupAlertToDonor({
+                supplierEmail: listing.supplier.email,
+                supplierName: listing.supplier.name || 'Food Donor',
+                receiverName: receiver.name || 'Community Member',
+                receiverEmail: receiver.email,
+                foodName: listing.foodName,
+                quantity,
+                unit: listing.unit,
+                pickupCode,
+                pickupLocation: listing.location,
+                pickupStart: listing.pickupStart,
+                pickupEnd: listing.pickupEnd
+            }).catch(e => console.error('Donor email dispatch error:', e));
+        }
+
         res.status(201).json(reservation);
     } catch (err) {
         res.status(400).json({ message: 'Error creating reservation', error: err.message });
@@ -146,6 +165,66 @@ export const notifyArrival = async (req, res) => {
         });
     } catch (err) {
         res.status(400).json({ message: 'Error updating arrival status', error: err.message });
+    }
+};
+
+// Receiver manually triggers sending/resending verification code email to the food donor / poster
+export const notifyDonorByEmail = async (req, res) => {
+    try {
+        const { pickupCode, reservationId, customDonorEmail } = req.body;
+        const query = reservationId ? { _id: reservationId } : { pickupCode };
+
+        const reservation = await Reservation.findOne(query)
+            .populate({
+                path: 'foodListing',
+                populate: { path: 'supplier', select: 'name email location' }
+            })
+            .populate('receiver', 'name email');
+
+        if (!reservation) {
+            return res.status(404).json({ message: 'Reservation not found' });
+        }
+
+        const targetDonorEmail = customDonorEmail || reservation.foodListing?.supplier?.email;
+        if (!targetDonorEmail) {
+            return res.status(400).json({ message: 'Food donor email address not found.' });
+        }
+
+        const supplierName = reservation.foodListing?.supplier?.name || 'Food Donor';
+        const receiverName = reservation.receiver?.name || req.user?.name || 'Community Member';
+        const receiverEmail = reservation.receiver?.email || req.user?.email;
+        const foodName = reservation.foodListing?.foodName || 'Surplus Food';
+
+        const emailResult = await sendPickupAlertToDonor({
+            supplierEmail: targetDonorEmail,
+            supplierName,
+            receiverName,
+            receiverEmail,
+            foodName,
+            quantity: reservation.quantity,
+            unit: reservation.foodListing?.unit || 'portions',
+            pickupCode: reservation.pickupCode,
+            pickupLocation: reservation.foodListing?.location || 'Designated Venue',
+            pickupStart: reservation.foodListing?.pickupStart,
+            pickupEnd: reservation.foodListing?.pickupEnd
+        });
+
+        const isRealDelivered = emailResult?.delivered === true;
+
+        res.json({
+            success: true,
+            delivered: isRealDelivered,
+            simulated: !isRealDelivered,
+            targetDonorEmail,
+            message: isRealDelivered 
+                ? `🎉 Verification code & pickup alert delivered to food poster (${targetDonorEmail})!`
+                : `ℹ️ Pickup pass alert logged for donor (${targetDonorEmail}).`,
+            pickupCode: reservation.pickupCode,
+            emailResult
+        });
+    } catch (err) {
+        console.error('Error notifying donor by email:', err);
+        res.status(500).json({ message: 'Failed to send email to food donor', error: err.message });
     }
 };
 

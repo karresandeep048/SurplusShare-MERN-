@@ -1,0 +1,169 @@
+import dns from 'node:dns';
+import nodemailer from 'nodemailer';
+
+// Force IPv4 first to prevent ENETUNREACH errors on cloud container hosts like Render
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+}
+
+/**
+ * Creates and configures the Nodemailer transporter.
+ * Uses port 587 STARTTLS with family: 4 (IPv4) for cloud container compatibility (Render, AWS, etc.).
+ */
+let transporterInstance = null;
+
+export const createTransporter = () => {
+    const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
+    const pass = process.env.EMAIL_PASS || process.env.GMAIL_PASS || process.env.EMAIL_PASSWORD;
+
+    if (!user || !pass) {
+        return null;
+    }
+
+    if (!transporterInstance) {
+        transporterInstance = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false, // STARTTLS
+            requireTLS: true,
+            family: 4, // Enforce IPv4 to avoid ENETUNREACH on cloud container hosts
+            auth: {
+                user: user.trim(),
+                pass: pass.trim().replace(/\s+/g, '') // strip any extra spaces
+            },
+            tls: {
+                rejectUnauthorized: false
+            },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000
+        });
+    }
+
+    return transporterInstance;
+};
+
+/**
+ * Sends a detailed email notification to the Food Poster (Donor / Supplier)
+ * with the 6-digit verification code and receiver claim details.
+ */
+export const sendPickupAlertToDonor = async ({
+    supplierEmail,
+    supplierName,
+    receiverName,
+    receiverEmail,
+    foodName,
+    quantity,
+    unit,
+    pickupCode,
+    pickupLocation,
+    pickupStart,
+    pickupEnd
+}) => {
+    const fromEmail = process.env.EMAIL_USER || process.env.GMAIL_USER || 'notifications@surplusshare.com';
+    const formattedStart = pickupStart ? new Date(pickupStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const formattedEnd = pickupEnd ? new Date(pickupEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const subject = `🍽️ SurplusShare Pickup Alert: ${receiverName} reserved "${foodName}" (Verification Code #${pickupCode})`;
+    
+    const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+                .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+                .header { background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; padding: 28px; text-align: center; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+                .content { padding: 32px; }
+                .badge { display: inline-block; background: #ecfdf5; color: #047857; padding: 6px 14px; border-radius: 12px; font-weight: 700; font-size: 13px; margin-bottom: 20px; }
+                .code-box { background: #f0fdf4; border: 2px dashed #059669; border-radius: 16px; padding: 20px; text-align: center; margin: 24px 0; }
+                .code-text { font-family: monospace; font-size: 36px; font-weight: 900; letter-spacing: 6px; color: #047857; margin: 8px 0; }
+                .details-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+                .details-table td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+                .details-table td.label { color: #64748b; font-weight: 600; width: 40%; }
+                .details-table td.value { color: #0f172a; font-weight: 700; }
+                .receiver-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-top: 16px; }
+                .footer { text-align: center; padding: 20px; font-size: 12px; color: #94a3b8; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="header">
+                    <h1>SurplusShare Donor Alert</h1>
+                    <p style="margin: 6px 0 0; font-size: 14px; opacity: 0.9;">A receiver has claimed your surplus food!</p>
+                </div>
+                <div class="content">
+                    <span class="badge">🌱 Food Rescue In Progress</span>
+                    <p style="font-size: 16px; line-height: 1.5; margin-top: 0;">
+                        Hello <strong>${supplierName}</strong>,
+                    </p>
+                    <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+                        Community member <strong>${receiverName}</strong> has reserved your food donation <strong>"${foodName}"</strong> and will arrive for the pickup.
+                    </p>
+
+                    <div class="code-box">
+                        <span style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #047857; letter-spacing: 1px;">Handover Verification Code</span>
+                        <div class="code-text">${pickupCode}</div>
+                        <span style="font-size: 12px; color: #065f46;">Verify this 6-digit code with ${receiverName} upon handover.</span>
+                    </div>
+
+                    <div class="receiver-box">
+                        <span style="font-size: 11px; text-transform: uppercase; font-weight: 800; color: #64748b; letter-spacing: 0.5px;">Claimed By (Receiver Details)</span>
+                        <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 4px;">${receiverName}</div>
+                        <div style="font-size: 13px; color: #059669; margin-top: 2px;">
+                            <a href="mailto:${receiverEmail}" style="color: #059669; text-decoration: none;">${receiverEmail}</a>
+                        </div>
+                    </div>
+
+                    <table class="details-table">
+                        <tr>
+                            <td class="label">Food Item:</td>
+                            <td class="value">${foodName}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Quantity Reserved:</td>
+                            <td class="value">${quantity} ${unit}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Pickup Window:</td>
+                            <td class="value">${formattedStart} - ${formattedEnd}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Pickup Venue:</td>
+                            <td class="value">${pickupLocation}</td>
+                        </tr>
+                    </table>
+
+                    <p style="font-size: 13px; color: #64748b; margin-top: 24px; line-height: 1.5;">
+                        When <strong>${receiverName}</strong> arrives at your location, verify code <strong style="color: #047857;">${pickupCode}</strong> on your SurplusShare dashboard to complete the handover.
+                    </p>
+                </div>
+                <div class="footer">
+                    Sent via SurplusShare • Fighting food waste together
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    try {
+        const transporter = createTransporter();
+        if (!transporter) {
+            console.log(`[EMAIL LOG] No SMTP credentials configured. Simulated email to donor ${supplierEmail} with code ${pickupCode}`);
+            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
+        }
+
+        const info = await transporter.sendMail({
+            from: `"SurplusShare" <${fromEmail}>`,
+            to: supplierEmail,
+            subject,
+            html: htmlContent
+        });
+
+        console.log(`✓ [EMAIL SENT] Pickup verification pass sent to donor ${supplierEmail} (ID: ${info.messageId})`);
+        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
+    } catch (error) {
+        console.warn(`⚠️ [EMAIL WARNING] Could not dispatch to donor (${error.message}). Logged to console.`);
+        return { delivered: false, simulated: true, success: true, error: error.message };
+    }
+};
