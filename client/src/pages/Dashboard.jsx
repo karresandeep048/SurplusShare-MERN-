@@ -21,7 +21,8 @@ import {
     Sparkles,
     ArrowRight,
     Mail,
-    Send
+    Send,
+    Navigation
 } from 'lucide-react';
 
 const DEFAULT_FOOD_IMAGE = 'https://images.unsplash.com/photo-1490645943961-4a51e5f31070?w=100&q=80';

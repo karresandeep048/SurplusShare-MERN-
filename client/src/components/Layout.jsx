@@ -34,7 +34,8 @@ const Sidebar = () => {
         { name: 'Profile & Impact', path: '/profile', icon: User },
     ];
 
-    const links = user?.role === 'supplier' ? supplierLinks : receiverLinks;
+    const isSupplier = user?.role?.toLowerCase() === 'supplier';
+    const links = isSupplier ? supplierLinks : receiverLinks;
 
     return (
         <aside className="w-64 bg-white border-r border-slate-200/80 hidden md:flex flex-col justify-between shrink-0 sticky top-16 h-[calc(100vh-64px)] z-30">
