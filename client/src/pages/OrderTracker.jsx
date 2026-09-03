@@ -238,23 +238,35 @@ const OrderTracker = () => {
     const currentLat = liveAvailable ? receiverLivePos[0] : startLoc[0] + (endLoc[0] - startLoc[0]) * progress;
     const currentLng = liveAvailable ? receiverLivePos[1] : startLoc[1] + (endLoc[1] - startLoc[1]) * progress;
 
-    // Compute distance-based progress & ETA when live location is available
-    const liveDistKm = liveAvailable ? haversineDistance([currentLat, currentLng], endLoc) : null;
-    const liveProgress = liveAvailable ? Math.max(0, Math.min(1, 1 - (liveDistKm / Math.max(haversineDistance(startLoc, endLoc), 0.01)))) : progress;
-    const liveMinsLeft = liveAvailable ? Math.max(1, Math.ceil(liveDistKm / 0.5)) : Math.max(1, Math.ceil(10 * (1 - progress)));  // ~30km/h avg city speed
+    // Compute distance between current position and pickup venue
+    const totalRouteDistKm = haversineDistance(startLoc, endLoc);
+    const currentDistKm = haversineDistance([currentLat, currentLng], endLoc);
 
-    // Movement Simulation
+    // ETA calculation: assume average city travel speed of ~25 km/h (urban areas with traffic)
+    const AVG_SPEED_KMH = 25;
+    const computeEtaMins = (distKm) => {
+        if (distKm <= 0.05) return 1; // Less than 50m = essentially arrived, show 1 min
+        const rawMins = (distKm / AVG_SPEED_KMH) * 60;
+        return Math.max(1, Math.ceil(rawMins));
+    };
+
+    // Movement Simulation (only runs when live GPS is NOT available)
     useEffect(() => {
-        if (arrived) return;
+        // Skip simulation if we have live GPS data or already arrived
+        if (arrived || liveAvailable) return;
 
-        const duration = 14000;
-        const interval = 60;
-        const steps = duration / interval;
-        let step = 0;
+        // Estimate a realistic simulation duration based on route distance
+        // At ~25km/h, compute how many real-time minutes the trip would take,
+        // then compress it to 1/20th for the simulation (e.g., 10 min trip → 30 sec simulation)
+        const estimatedTripMins = Math.max(3, computeEtaMins(totalRouteDistKm));
+        const simulationDurationMs = Math.min(600000, Math.max(30000, estimatedTripMins * 3000)); // 30s to 10min simulation
+        const stepInterval = 500; // Update every 500ms for smooth movement
+        const totalSteps = simulationDurationMs / stepInterval;
+        let step = Math.floor(progress * totalSteps); // Resume from current progress
 
         const timer = setInterval(() => {
             step += 1;
-            const newProgress = Math.min(step / steps, 1);
+            const newProgress = Math.min(step / totalSteps, 1);
             setProgress(newProgress);
 
             if (newProgress >= 1) {
@@ -264,10 +276,22 @@ const OrderTracker = () => {
                     handleNotifyArrival();
                 }
             }
-        }, interval);
+        }, stepInterval);
 
         return () => clearInterval(timer);
-    }, [arrived, isSupplier]);
+    }, [arrived, isSupplier, liveAvailable]);
+
+    // When live GPS is active, auto-detect arrival (within 100m of venue)
+    useEffect(() => {
+        if (!liveAvailable || arrived || isCollected) return;
+        if (currentDistKm <= 0.1) { // Within 100 meters
+            setArrived(true);
+            setProgress(1);
+            if (!isSupplier) {
+                handleNotifyArrival();
+            }
+        }
+    }, [currentDistKm, liveAvailable, arrived, isCollected, isSupplier]);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(code);
@@ -275,7 +299,10 @@ const OrderTracker = () => {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const minsLeft = liveAvailable ? liveMinsLeft : Math.max(1, Math.ceil(10 * (1 - progress)));
+    // Final ETA: use real distance when live GPS is available, otherwise estimate from simulated remaining distance
+    const minsLeft = liveAvailable
+        ? computeEtaMins(currentDistKm)
+        : computeEtaMins(totalRouteDistKm * (1 - progress));
 
     return (
         <div className="h-[calc(100vh-64px)] flex flex-col md:flex-row overflow-hidden bg-slate-50 relative">
@@ -396,9 +423,9 @@ const OrderTracker = () => {
                                             <div>
                                                 <h4 className="text-base font-black text-blue-950">~{minsLeft} mins away</h4>
                                                 <p className="text-xs text-blue-700 font-medium">Receiver approaching your venue</p>
-                                                {liveAvailable && liveDistKm != null && (
+                                                {liveAvailable && currentDistKm != null && (
                                                     <p className="text-[11px] text-blue-600 font-semibold mt-0.5">
-                                                        📍 {liveDistKm < 1 ? `${Math.round(liveDistKm * 1000)}m` : `${liveDistKm.toFixed(1)}km`} away
+                                                        📍 {currentDistKm < 1 ? `${Math.round(currentDistKm * 1000)}m` : `${currentDistKm.toFixed(1)}km`} away
                                                     </p>
                                                 )}
                                             </div>
@@ -657,8 +684,8 @@ const OrderTracker = () => {
                                 <div className="p-2 text-center">
                                     <p className="font-bold text-xs">🛵 {isSupplier ? `${reservationData?.receiver?.name || 'Receiver'} En Route` : 'Your Live Route'}</p>
                                     <p className="text-[10px] text-slate-500">ETA: ~{minsLeft} mins</p>
-                                    {liveAvailable && liveDistKm != null && (
-                                        <p className="text-[10px] text-emerald-600 font-semibold">📍 {liveDistKm < 1 ? `${Math.round(liveDistKm * 1000)}m` : `${liveDistKm.toFixed(1)}km`} to venue</p>
+                                    {liveAvailable && currentDistKm != null && (
+                                        <p className="text-[10px] text-emerald-600 font-semibold">📍 {currentDistKm < 1 ? `${Math.round(currentDistKm * 1000)}m` : `${currentDistKm.toFixed(1)}km`} to venue</p>
                                     )}
                                     {liveAvailable && <p className="text-[9px] text-emerald-500 font-bold mt-0.5">● LIVE GPS</p>}
                                 </div>
