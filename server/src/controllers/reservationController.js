@@ -379,9 +379,15 @@ export const resendEmailPass = async (req, res) => {
             pickupEnd: reservation.foodListing?.pickupEnd
         });
 
+        const isRealDelivered = emailResult?.delivered === true;
+
         res.json({
             success: true,
-            message: `📧 Pickup pass successfully sent to ${targetEmail}!`,
+            delivered: isRealDelivered,
+            simulated: !isRealDelivered,
+            message: isRealDelivered 
+                ? `🎉 Real email delivered to ${targetEmail}!` 
+                : `ℹ️ Pickup pass logged to server terminal preview. (For real Gmail inbox delivery, a 16-character Google App Password is required in server/.env)`,
             targetEmail,
             pickupCode: reservation.pickupCode,
             emailResult
@@ -441,9 +447,15 @@ export const sendCustomTestEmail = async (req, res) => {
             });
         }
 
+        const isRealDelivered = emailResult?.delivered === true;
+
         res.json({
             success: true,
-            message: `✓ Test ${emailType} email dispatched to ${recipient}!`,
+            delivered: isRealDelivered,
+            simulated: !isRealDelivered,
+            message: isRealDelivered 
+                ? `✓ Real ${emailType} email delivered to ${recipient}!` 
+                : `ℹ️ ${emailType} logged to server terminal preview. (For real Gmail inbox delivery, a 16-character Google App Password is required in server/.env)`,
             targetEmail: recipient,
             emailType,
             emailResult
@@ -453,5 +465,6 @@ export const sendCustomTestEmail = async (req, res) => {
         res.status(500).json({ message: 'Failed to send test email', error: err.message });
     }
 };
+
 
 

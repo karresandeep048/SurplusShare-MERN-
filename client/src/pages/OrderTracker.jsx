@@ -112,6 +112,8 @@ const OrderTracker = () => {
     };
 
     // Handle sending/resending digital pickup pass via email
+    const [isEmailLiveDelivered, setIsEmailLiveDelivered] = useState(false);
+
     const handleSendEmailPass = async (overrideEmail = null) => {
         setEmailSending(true);
         setEmailSuccessMsg(null);
@@ -122,7 +124,8 @@ const OrderTracker = () => {
                 pickupCode: code,
                 customEmail: target
             });
-            setEmailSuccessMsg(data.message || `✓ Pickup Pass successfully emailed to ${target}!`);
+            setIsEmailLiveDelivered(data.delivered === true);
+            setEmailSuccessMsg(data.message || `Pickup pass dispatched to ${target}!`);
             setShowCustomEmail(false);
             setCustomEmail('');
         } catch (err) {
@@ -255,9 +258,19 @@ const OrderTracker = () => {
 
                             {/* Success & Error Messages */}
                             {emailSuccessMsg && (
-                                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-1.5 animate-fade-in">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                    <span>{emailSuccessMsg}</span>
+                                <div className={`p-3 border rounded-xl text-xs font-bold flex items-start gap-2 animate-fade-in ${
+                                    isEmailLiveDelivered 
+                                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                                        : 'bg-amber-50 border-amber-200 text-amber-900'
+                                }`}>
+                                    {isEmailLiveDelivered ? (
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                    ) : (
+                                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    )}
+                                    <div className="flex-1">
+                                        <p>{emailSuccessMsg}</p>
+                                    </div>
                                 </div>
                             )}
                             {emailErrorMsg && (

@@ -125,7 +125,7 @@ export const sendReservationNotificationToSupplier = async ({
         const transporter = createTransporter();
         if (!transporter) {
             logSimulatedSupplierEmail({ supplierEmail, supplierName, receiverName, receiverEmail, foodName, quantity, unit, pickupCode, pickupLocation, fromEmail, subject });
-            return { simulated: true, success: true };
+            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials' };
         }
 
         const info = await transporter.sendMail({
@@ -136,11 +136,11 @@ export const sendReservationNotificationToSupplier = async ({
         });
 
         console.log(`✓ [EMAIL SENT] Gmail notification successfully sent to supplier ${supplierEmail} (ID: ${info.messageId})`);
-        return { success: true, messageId: info.messageId };
+        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
     } catch (error) {
         console.warn(`⚠️ [EMAIL WARNING] Could not dispatch via Gmail SMTP (${error.message}). Falling back to simulated log.`);
         logSimulatedSupplierEmail({ supplierEmail, supplierName, receiverName, receiverEmail, foodName, quantity, unit, pickupCode, pickupLocation, fromEmail, subject });
-        return { simulated: true, success: true, error: error.message };
+        return { delivered: false, simulated: true, success: true, error: error.message };
     }
 };
 
@@ -234,7 +234,7 @@ export const sendReservationConfirmationToReceiver = async ({
         const transporter = createTransporter();
         if (!transporter) {
             logSimulatedReceiverEmail({ receiverEmail, receiverName, supplierName, foodName, quantity, unit, pickupCode, pickupLocation, subject });
-            return { simulated: true, success: true };
+            return { delivered: false, simulated: true, success: true, reason: 'No SMTP credentials configured' };
         }
 
         const info = await transporter.sendMail({
@@ -245,11 +245,11 @@ export const sendReservationConfirmationToReceiver = async ({
         });
 
         console.log(`✓ [EMAIL SENT] Gmail confirmation sent to receiver ${receiverEmail} (ID: ${info.messageId})`);
-        return { success: true, messageId: info.messageId };
+        return { delivered: true, simulated: false, success: true, messageId: info.messageId };
     } catch (error) {
         console.warn(`⚠️ [EMAIL WARNING] Could not dispatch via Gmail SMTP (${error.message}). Falling back to simulated log.`);
         logSimulatedReceiverEmail({ receiverEmail, receiverName, supplierName, foodName, quantity, unit, pickupCode, pickupLocation, subject });
-        return { simulated: true, success: true, error: error.message };
+        return { delivered: false, simulated: true, success: true, error: error.message };
     }
 };
 
