@@ -4,7 +4,9 @@ import nodemailer from 'nodemailer';
  * Creates and configures the Nodemailer transporter.
  * Supports Gmail (via 16-char App Passwords) or custom SMTP with timeouts.
  */
-const createTransporter = () => {
+let transporterInstance = null;
+
+export const createTransporter = () => {
     const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
     const pass = process.env.EMAIL_PASS || process.env.GMAIL_PASS || process.env.EMAIL_PASSWORD;
 
@@ -12,18 +14,17 @@ const createTransporter = () => {
         return null;
     }
 
-    return nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
-        auth: {
-            user: user.trim(),
-            pass: pass.trim().replace(/\s+/g, '') // strip any extra spaces
-        },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000
-    });
+    if (!transporterInstance) {
+        transporterInstance = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: user.trim(),
+                pass: pass.trim().replace(/\s+/g, '') // strip any extra spaces
+            }
+        });
+    }
+
+    return transporterInstance;
 };
 
 /**

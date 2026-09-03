@@ -387,7 +387,9 @@ export const resendEmailPass = async (req, res) => {
             simulated: !isRealDelivered,
             message: isRealDelivered 
                 ? `🎉 Real email delivered to ${targetEmail}!` 
-                : `ℹ️ Pickup pass logged to server terminal preview. (For real Gmail inbox delivery, a 16-character Google App Password is required in server/.env)`,
+                : (emailResult?.error 
+                    ? `⚠️ Email delivery warning (${emailResult.error}). Preview logged to terminal.` 
+                    : `ℹ️ Pickup pass logged to server terminal preview. (For real Gmail inbox delivery, a 16-character Google App Password is required in server/.env)`),
             targetEmail,
             pickupCode: reservation.pickupCode,
             emailResult
@@ -455,7 +457,9 @@ export const sendCustomTestEmail = async (req, res) => {
             simulated: !isRealDelivered,
             message: isRealDelivered 
                 ? `✓ Real ${emailType} email delivered to ${recipient}!` 
-                : `ℹ️ ${emailType} logged to server terminal preview. (For real Gmail inbox delivery, a 16-character Google App Password is required in server/.env)`,
+                : (emailResult?.error
+                    ? `⚠️ ${emailType} delivery warning (${emailResult.error}). Preview logged to terminal.`
+                    : `ℹ️ ${emailType} logged to server terminal preview. (For real Gmail inbox delivery, a 16-character Google App Password is required in server/.env)`),
             targetEmail: recipient,
             emailType,
             emailResult
